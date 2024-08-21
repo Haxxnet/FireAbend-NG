@@ -1,0 +1,49 @@
+id: wordpress-easy-table-of-contents
+
+info:
+  name: Easy Table of Contents Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/easy-table-of-contents/
+  metadata:
+    plugin_namespace: easy-table-of-contents
+    wpscan: https://wpscan.com/plugin/easy-table-of-contents
+  tags: tech,wordpress,wp-plugin,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/easy-table-of-contents/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/easy-table-of-contents.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4b0a00483046022100c27eb148775b067cdf0fad1a675166455cce00c39bcd8e30b6c4571c2e70f6a1022100ec30df8530a1eb9621da326cd1c4574083f533ecb7c3545679a285063376d5b5:922c64590222798bb761d5b6d8e72950

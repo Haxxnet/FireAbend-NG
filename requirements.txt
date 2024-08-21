@@ -1,0 +1,19 @@
+python-libnmap
+xlsxwriter
+termcolor
+openpyxl
+httpx
+asyncio
+pandas==2.2.2
+numpy==2.0.1
+bcrypt
+
+# packages for eyewitness
+selenium==4.7.0
+fuzzywuzzy
+python-Levenshtein
+pyvirtualdisplay
+netaddr
+
+# findings auditing
+ssh-audit==3.2.0

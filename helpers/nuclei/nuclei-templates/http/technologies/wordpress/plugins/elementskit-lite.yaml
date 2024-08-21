@@ -1,0 +1,49 @@
+id: wordpress-elementskit-lite
+
+info:
+  name: ElementsKit Elementor addons Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/elementskit-lite/
+  metadata:
+    plugin_namespace: elementskit-lite
+    wpscan: https://wpscan.com/plugin/elementskit-lite
+  tags: tech,wordpress,wp-plugin,top-100,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/elementskit-lite/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/elementskit-lite.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4b0a00483046022100fed1d226a33303c07b75986bac5f5a4567a6e3220fdd74985b19e2bf91852794022100e97b8843966f4e236248f1174ed25d9bbadb9fd53f6d5ecb181bd0c928ddc1f2:922c64590222798bb761d5b6d8e72950

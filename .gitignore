@@ -1,0 +1,9 @@
+**_FIREABEND**
+*.log
+/targets.txt
+targets.txt
+/scans/**
+geckodriver.log
+package.json
+CHANGELOG.md
+**/.github/**

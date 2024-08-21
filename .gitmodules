@@ -1,0 +1,21 @@
+[submodule "helpers/shcheck"]
+	path = helpers/shcheck
+	url = https://github.com/l4rm4nd/shcheck
+[submodule "helpers/nmap-bootstrap-xsl"]
+	path = helpers/nmap-bootstrap-xsl
+	url = https://github.com/Haxxnet/nmap-bootstrap-xsl
+[submodule "helpers/pentest2xlsx"]
+	path = helpers/pentest2xlsx
+	url = https://github.com/l4rm4nd/pentest2xlsx
+[submodule "helpers/shcheck2excel"]
+	path = helpers/shcheck2excel
+	url = https://github.com/l4rm4nd/shcheck2excel
+[submodule "helpers/testssl.sh"]
+	path = helpers/testssl.sh
+	url = https://github.com/drwetter/testssl.sh
+[submodule "helpers/nuclei/nuclei-templates"]
+	path = helpers/nuclei/nuclei-templates
+	url = https://github.com/projectdiscovery/nuclei-templates
+[submodule "helpers/ssh-audit-excel"]
+	path = helpers/ssh-audit-excel
+	url = https://github.com/l4rm4nd/ssh-audit-excel

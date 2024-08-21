@@ -1,0 +1,49 @@
+id: wordpress-header-footer-elementor
+
+info:
+  name: Elementor Header & Footer Builder Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/header-footer-elementor/
+  metadata:
+    plugin_namespace: header-footer-elementor
+    wpscan: https://wpscan.com/plugin/header-footer-elementor
+  tags: tech,wordpress,wp-plugin,top-100,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/header-footer-elementor/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/header-footer-elementor.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 490a004630440220356bab9e5db713e598dae97f8491ca82bbaa989b1ba153377162eee48ff2fb9c0220577963707a620a190fba5e9c62a3b19eb168a8d7c59ffc6c68a6707fd1dbca7f:922c64590222798bb761d5b6d8e72950

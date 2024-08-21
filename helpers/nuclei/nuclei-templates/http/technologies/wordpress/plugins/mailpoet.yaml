@@ -1,0 +1,49 @@
+id: wordpress-mailpoet
+
+info:
+  name: MailPoet – Newsletters, Email Marketing, and Automation Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/mailpoet/
+  metadata:
+    plugin_namespace: mailpoet
+    wpscan: https://wpscan.com/plugin/mailpoet
+  tags: tech,wordpress,wp-plugin,top-100,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/mailpoet/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/mailpoet.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4b0a00483046022100823e3344d921ec3e51b92f150babbae53a16a3cfcb3c07527de14e860a34af0d022100cd09d47373f671231933f008c6f219dcfd01c357c782193e13acebb916bbc346:922c64590222798bb761d5b6d8e72950

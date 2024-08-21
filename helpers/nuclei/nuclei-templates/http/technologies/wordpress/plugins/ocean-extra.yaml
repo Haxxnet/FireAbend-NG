@@ -1,0 +1,49 @@
+id: wordpress-ocean-extra
+
+info:
+  name: Ocean Extra Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/ocean-extra/
+  metadata:
+    plugin_namespace: ocean-extra
+    wpscan: https://wpscan.com/plugin/ocean-extra
+  tags: tech,wordpress,wp-plugin,top-100,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/ocean-extra/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/ocean-extra.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4a0a0047304502202157b5ac4326ea9295d6c9206617b63f636d7c317b6a1a5e8d40bd098d961a79022100855602424de03299756c87fd444cdcb54418b4abd4a6e7f90d1a6f06b2317a01:922c64590222798bb761d5b6d8e72950

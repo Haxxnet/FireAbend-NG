@@ -1,0 +1,49 @@
+id: wordpress-mailchimp-for-woocommerce
+
+info:
+  name: Mailchimp for WooCommerce Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/mailchimp-for-woocommerce/
+  metadata:
+    plugin_namespace: mailchimp-for-woocommerce
+    wpscan: https://wpscan.com/plugin/mailchimp-for-woocommerce
+  tags: tech,wordpress,wp-plugin,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/mailchimp-for-woocommerce/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/mailchimp-for-woocommerce.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4a0a00473045022067fb78f11e0bf910065f091985055b1d91780e6e16158c9c30ae5083140eb6e30221009b6b8a554b4f0e6b50e02fd6eaac1d494e935bfc3f1c3c9ab523b39228f9cc57:922c64590222798bb761d5b6d8e72950

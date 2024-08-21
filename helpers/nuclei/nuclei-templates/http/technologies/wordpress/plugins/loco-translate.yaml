@@ -1,0 +1,49 @@
+id: wordpress-loco-translate
+
+info:
+  name: Loco Translate Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/loco-translate/
+  metadata:
+    plugin_namespace: loco-translate
+    wpscan: https://wpscan.com/plugin/loco-translate
+  tags: tech,wordpress,wp-plugin,top-100,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/loco-translate/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/loco-translate.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4a0a0047304502207d24adfe01f24c68d48c0e91405e86f2dd24bc39a8490b7c98734023485b2b11022100975dfb6c98611e12f4c73b5a8c18af20752b2814f4f2ab06dff9a2d25fbf2382:922c64590222798bb761d5b6d8e72950

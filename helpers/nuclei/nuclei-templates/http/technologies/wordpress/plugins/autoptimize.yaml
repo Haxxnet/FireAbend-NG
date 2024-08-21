@@ -1,0 +1,49 @@
+id: wordpress-autoptimize
+
+info:
+  name: Autoptimize Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/autoptimize/
+  metadata:
+    plugin_namespace: autoptimize
+    wpscan: https://wpscan.com/plugin/autoptimize
+  tags: tech,wordpress,wp-plugin,top-100,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/autoptimize/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/autoptimize.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4a0a0047304502200bd219a2ec03fef30eee0a0d3e92f9bfbc0aa973a25a0a34af34340613c56c80022100b9a9606aa0da008ce743e3ac01d9aecd68f4227098d355c25a7c45a531d0f426:922c64590222798bb761d5b6d8e72950

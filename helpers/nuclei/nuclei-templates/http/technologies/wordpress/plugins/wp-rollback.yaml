@@ -1,0 +1,49 @@
+id: wordpress-wp-rollback
+
+info:
+  name: WP Rollback – Rollback Plugins and Themes Detection
+  author: ricardomaia
+  severity: info
+  reference:
+    - https://wordpress.org/plugins/wp-rollback/
+  metadata:
+    plugin_namespace: wp-rollback
+    wpscan: https://wpscan.com/plugin/wp-rollback
+  tags: tech,wordpress,wp-plugin,top-200
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/wp-rollback/readme.txt"
+
+    payloads:
+      last_version: helpers/wordpress/plugins/wp-rollback.txt
+
+    extractors:
+      - type: regex
+        part: body
+        internal: true
+        name: internal_detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+      - type: regex
+        part: body
+        name: detected_version
+        group: 1
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: "outdated_version"
+        dsl:
+          - compare_versions(internal_detected_version, concat("< ", last_version))
+
+      - type: regex
+        part: body
+        regex:
+          - '(?i)Stable.tag:\s?([\w.]+)'
+# digest: 4a0a0047304502205ac1020b500d7aa78e6fe0f9a99a567af0a6e030501b4304ce223c3fbd102424022100e96a1898d04e0ce38f4b27ed2a540840a394a2ba44934c7dc09edd690ea04170:922c64590222798bb761d5b6d8e72950
