@@ -1,5 +1,5 @@
 <div align="center" width="100%">
-    <h1>🔥 FireAbend 🔥</h1>
+    <h1>🔥 FireAbend-NG 🔥</h1>
     <p>Python3 script that automates the tedious tasks of a penetration tester</p><p>
     <a target="_blank" href="https://github.com/l4rm4nd"><img src="https://img.shields.io/badge/maintainer-LRVT-orange" /></a><br>
     <!--<a target="_blank" href="#"><img src="https://ForTheBadge.com/images/badges/makes-people-smile.svg" /></a><br>-->
