@@ -50,13 +50,17 @@ options:
 ### Installation
 
 ````bash
-# download latest fireabend.zip release and unzip
-unzip fireabend.zip && cd fireabend
+# clone this repo
+git clone https://github.com/Haxxnet/FireAbend-NG && cd FireAbend-NG
 
 # install helper tools - Kali Linux recommended
 sudo apt install xsltproc nmap eyewitness
 
-# install python dependencies; optionally use a virtual environment (e.g. virtualenv, pipenv, etc.)
+# create python virtual environment
+virtualenv venv
+source venv/bin/activate
+
+# install python dependencies
 pip3 install -r requirements.txt
 ````
 
