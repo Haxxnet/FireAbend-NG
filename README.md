@@ -16,7 +16,7 @@ FireAbend automates various pentesting tasks such as:
 - SSH auditing via ssh-audit
 - nuclei vulnerability scanning
 - converting various output formats to customer friendly result files (html, xlsx, csv, etc.)
-- maintaining a strict methodology with no risk of human failure
+- maintaining a strict methodology with less risk of human failure
 
 ## 🎓 Usage
 
@@ -44,7 +44,7 @@ options:
   --check               Sanity check, print binary paths and defaults
 
 ````
-## 🐍 Example 1 - Native Python
+## 🐍 Native Python
 
 ### Installation
 
@@ -69,23 +69,23 @@ pip3 install -r requirements.txt
 python3 dist/<your-python-version>/fireabend.py --targets targets.txt --nuclei-severity high,critical --dns-servers 1.1.1.1
 ````
 
-You will find your scan results in the /scans directory.
+You will find your scan results in the `scans/` directory.
 
 ## 🔎 Methodology
 
-1. Run basic nmap scan to enumerate top-250 open udp ports. No version detection, no nse script scans.
+1. Run basic nmap scan to enumerate top-500 open udp ports. No version detection, no nse script scans.
 2. Convert udp nmap xml output file into convenient html report.
-3. Run basic nmap scan to enumerate open tcp ports. No version detection, no nse script scans.
-4. Extract open ports and probe for http/s urls from basic nmap portscan results.
-5. Convert tcp nmap xml output file into convenient html report.
+3. Run fullrange nmap scan to enumerate open tcp ports. No version detection, no nse script scans.
+4. Extract open ports and probe for http/s urls via httpx.
+5. Convert tcp nmap xml output file to convenient html report.
 6. Pass enumerated tcp ports into advanced nmap scan. Version detection and nse scripts enabled.
-7. Extract open ports and probe for http/s urls from detailed nmap portscan results.
-8. Convert tcp nmap xml output file into convenient html report.
+7. Extract open ports and probe for http/s urls via httpx.
+8. Convert tcp nmap xml output file to convenient html report.
 9. Run shcheck to enumerate http response headers by passing in the extracted http/s urls from nmap file.
 10. Convert shcheck json output files into convenient xlsx report.
-11. Run eyewitness against the extracted http/s urls from detailed nmap portscan results. Save html report as output.
+11. Run eyewitness against the extracted http/s urls from detailed nmap portscan results. Save html report with screenshots as output.
 12. Run testssl.sh for auditing ssl/tls configuration by passing in the detailed nmap results file.
 13. Run testssl.sh for auditing ssl/tls configuration by passing in the extracted https urls from nmap file.
-14. Convert all testssl.sh json output files into convenient xlsx report. Autofit columns and conditionally format cells.
+14. Convert all testssl.sh json output files to colorized xlsx report.
 15. Update and run nuclei vulnerability scanner against extracted http/s urls. Save identified vulnerabilites into txt outfile.
-16. Run ssh-audit against identified SSH network services. Convert JSON results to XLSX.
+16. Run ssh-audit against identified SSH network services. Convert JSON results to colorized xlsx report.
