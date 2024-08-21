@@ -1,1 +1,1 @@
-scanme.nmap.org
+scanme2.nmap.org
