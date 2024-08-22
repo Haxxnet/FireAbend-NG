@@ -85,6 +85,8 @@ If you feel brave, you can upgrade all helper submodules. This may brick functio
 git submodule update --remote
 ```
 
+Nuclei templates are automatically updated each time fireabend.py runs.
+
 ## 🔎 Methodology
 
 1. Run basic nmap scan to enumerate top-500 open udp ports. No version detection, no nse script scans.
