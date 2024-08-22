@@ -84,8 +84,8 @@ You will find your scan results in the `scans/` directory.
 9. Run shcheck to enumerate http response headers by passing in the extracted http/s urls from nmap file.
 10. Convert shcheck json output files into convenient xlsx report.
 11. Run eyewitness against the extracted http/s urls from detailed nmap portscan results. Save html report with screenshots as output.
-12. Run testssl.sh for auditing ssl/tls configuration by passing in the detailed nmap results file.
-13. Run testssl.sh for auditing ssl/tls configuration by passing in the extracted https urls from nmap file.
+12. Run testssl.sh for auditing ssl/tls configuration by passing in the detailed nmap results file. Covers TLS + STARTTLS services.
+13. Run testssl.sh for auditing ssl/tls configuration by passing in the extracted https urls from nmap file. Covers VHOSTs.
 14. Convert all testssl.sh json output files to colorized xlsx report.
 15. Update and run nuclei vulnerability scanner against extracted http/s urls. Save identified vulnerabilites into txt outfile.
 16. Run ssh-audit against identified SSH network services. Convert JSON results to colorized xlsx report.
