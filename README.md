@@ -71,6 +71,20 @@ python3 dist/<your-python-version>/fireabend.py --targets targets.txt --nuclei-s
 
 You will find your scan results in the `scans/` directory.
 
+### Updating
+
+You can upgrade FireAbend by simply issuing a git pull. This will fetch the latest stable release.
+
+````
+git pull
+````
+
+If you feel brave, you can upgrade all helper submodules. This may brick functionality.
+
+```
+git submodule update --remote
+```
+
 ## 🔎 Methodology
 
 1. Run basic nmap scan to enumerate top-500 open udp ports. No version detection, no nse script scans.
