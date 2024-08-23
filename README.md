@@ -11,7 +11,7 @@
 FireAbend automates various pentesting tasks such as:
 
 - nmap port scanning (tcp + udp)
-- ssl/tls auditing of starttls and https services
+- ssl/tls auditing of starttls and tls (https) services
 - http response header analysis of http(s) services
 - SSH auditing via ssh-audit
 - nuclei vulnerability scanning
