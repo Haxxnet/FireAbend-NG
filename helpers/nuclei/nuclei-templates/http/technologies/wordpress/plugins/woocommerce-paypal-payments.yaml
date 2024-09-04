@@ -9,7 +9,7 @@ info:
   metadata:
     plugin_namespace: woocommerce-paypal-payments
     wpscan: https://wpscan.com/plugin/woocommerce-paypal-payments
-  tags: tech,wordpress,wp-plugin,top-200
+  tags: tech,wordpress,wp-plugin,top-100,top-200
 
 http:
   - method: GET
@@ -46,4 +46,4 @@ http:
         part: body
         regex:
           - '(?i)Stable.tag:\s?([\w.]+)'
-# digest: 4a0a0047304502207d2433fc80997e3b962500313f7b8098d63278d91c60138e006625b567f0eb95022100f485dbcdbfc03bc75a0b5a37a7d701eecd1b004be483f928512b4bcdbeb34847:922c64590222798bb761d5b6d8e72950
+# digest: 4b0a0048304602210095050b8a55015b62b229d18a975d1172ca9ddc22c8127e8ae051c19be2d96a30022100f36ff031fb167846d875d0e3f6930b449bd3a873ccd59d148ad4494e416fe1e9:922c64590222798bb761d5b6d8e72950

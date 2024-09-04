@@ -1,7 +1,7 @@
 id: wordpress-contact-form-7-honeypot
 
 info:
-  name: Honeypot for Contact Form 7 Detection
+  name: Honeypot for Contact Form 7 — Protect Contact Form 7 spam with ease! [100% FREE Anti-Spam Plugin] Detection
   author: ricardomaia
   severity: info
   reference:
@@ -46,4 +46,4 @@ http:
         part: body
         regex:
           - '(?i)Stable.tag:\s?([\w.]+)'
-# digest: 4b0a00483046022100a56c021af523b91fb3036e9e1721e37e3b113b5cbcdd440599944ae25c277cf6022100f6657eb734dcaca7f0231908da30468d2b8ad5c742a7ec70b13de2917c691efd:922c64590222798bb761d5b6d8e72950
+# digest: 4a0a00473045022100b07bdcf7c93a95251e06daf674da361a789d8b1bf47059a300b75f398a8bfff202200a63bc28f890ffcf8aece647d531f522c84d3daebd021ea388f4d21483fe7489:922c64590222798bb761d5b6d8e72950

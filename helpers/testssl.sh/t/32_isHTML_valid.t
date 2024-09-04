@@ -16,7 +16,7 @@ my $html="";
 my $debughtml="";
 my $edited_html="";
 my $htmlfile="tmp.html";
-my $check2run="--ip=one --ids-friendly --color 0 --htmlfile $htmlfile";
+my $check2run="--ip=one --sneaky --ids-friendly --color 0 --htmlfile $htmlfile";
 my $diff="";
 die "Unable to open $prg" unless -f $prg;
 
@@ -75,6 +75,9 @@ $debughtml =~ s/ Pre-test: .*\n//g;
 $debughtml =~ s/.*OK: below 825 days.*\n//g;
 $debughtml =~ s/.*DEBUG:.*\n//g;
 $debughtml =~ s/No engine or GOST support via engine with your.*\n//g;
+$debughtml =~ s/.*built: .*\n//g;
+$debughtml =~ s/.*Using bash .*\n//g;
+# is whole line:   s/.*<pattern> .*\n//g;
 
 cmp_ok($debughtml, "eq", $html, "HTML file created with --debug 4 matches HTML file created without --debug");
 $tests++;
