@@ -22,6 +22,7 @@ from pathlib import Path
 
 import json
 import logging
+import re
 import xlsxwriter
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
@@ -257,16 +258,17 @@ class Testssl(Parser):
             {"header": "Port"}
         ]
 
+        # Add certificate names as headers from config.certificates
         for values in config.certificates.values():
             table_headers.append({"header": values["name"]})
 
         try:
             for input_file in self._input_files:
                 input_file.seek(0)
-                host_certificates = get_host_certificates(input_file)
+                host_certificates = self.get_host_certificates_for_tab(input_file)  # Call the method via 'self'
 
                 for values in host_certificates:
-                    table_data.append(reindex(table_headers, values))
+                    table_data.append(reindexHeaders(table_headers, values))
 
             worksheet = self._workbook.add_worksheet("Host vs Certificates")
             self.draw_table(worksheet, table_headers, table_data)
@@ -274,6 +276,51 @@ class Testssl(Parser):
             logging.exception("KeyError: {}".format(e))
         except ValueError as e:
             logging.exception("ValueError: {}".format(e))
+
+    def get_host_certificates_for_tab(self, file):
+        results = []
+
+        try:
+            data = json.load(file)
+
+            for values in data["scanResult"]:
+                certificates = {}
+
+                # Add the file path, host IP, DNS, and port info to the results dictionary
+                certificates["filepath"] = Path(file.name).resolve().as_posix()
+                certificates["host_ip"] = values["ip"]
+                certificates["host_dns"] = values["targetHost"]
+                certificates["port"] = int(values["port"])
+
+                # Iterate over all configured certificate keys
+                for cert_key, cert_value in config.certificates.items():
+                    found = False
+                    cert_name = cert_value["name"]
+
+                    # Check for both regular and <hostCert#1> cert_key
+                    for serverDefault in values.get("serverDefaults", []):
+                        # If the regular cert_key (e.g., cert_chain_of_trust) exists
+                        if serverDefault["id"] == cert_key:
+                            certificates[cert_name] = serverDefault["severity"]
+                            found = True
+                            break  # Stop once the regular key is found
+
+                        # If <hostCert#1> exists and no regular key has been found, treat it as regular
+                        elif re.match(rf"^{cert_key}\s*<hostCert#1>$", serverDefault["id"]):
+                            certificates[cert_name] = serverDefault["severity"]
+                            found = True
+                            break  # Stop once <hostCert#1> is found
+
+                results.append(certificates)
+
+        except KeyError as e:
+            logging.exception("KeyError: {}".format(e))
+            logging.exception("Skipping JSON file: " + file.name)
+        except ValueError as e:
+            logging.exception("ValueError: {}".format(e))
+            logging.exception("Skipping JSON file: " + file.name)
+
+        return results
 
     def parse_host_protocol(self):
         table_data = []
@@ -423,6 +470,33 @@ def reindex(table_headers, d):
 
     return results
 
+def reindexHeaders(table_headers, d):
+    results = [None for _ in range(len(table_headers))]
+
+    # Map basic fields: File, Host IP, Host DNS, and Port
+    results[table_headers.index({"header": "File"})] = d.get("filepath", "")
+    results[table_headers.index({"header": "Host IP"})] = d.get("host_ip", "")
+    results[table_headers.index({"header": "Host DNS"})] = d.get("host_dns", "")
+    results[table_headers.index({"header": "Port"})] = d.get("port", "")
+
+    # Map certificates dynamically based on config
+    # Handle <hostCert#X> by normalizing them to standard headers
+    for header in table_headers[4:]:  # Skip the first four headers (File, IP, DNS, Port)
+        cert_name = header["header"]  # This is the certificate name, e.g., "Chain of Trust"
+        matching_key = None
+
+        # Try to find the matching certificate in the data, handling <hostCert#X>
+        for key in d.keys():
+            # Normalize keys like cert_chain_of_trust <hostCert#1> to cert_chain_of_trust
+            if key == cert_name or re.match(rf"{cert_name} <hostCert#\d+>", key):
+                matching_key = key
+                break
+
+        if matching_key:
+            results[table_headers.index({"header": cert_name})] = d[matching_key]
+
+    return results    
+
 
 def get_host_certificates(file):
     results = []
@@ -433,26 +507,36 @@ def get_host_certificates(file):
         for values in data["scanResult"]:
             certificates = []
 
-            for serverDefault in values["serverDefaults"]:
-                if serverDefault["id"] in config.certificates.keys():
-                    certificates.append(
-                        {
-                            "vulnerability": config.
-                            certificates[serverDefault["id"]]["name"],
+            # Iterate over all config.certificates keys
+            for cert_key, cert_value in config.certificates.items():
+                # First, check for the standard cert_key (e.g., "cert_chain_of_trust")
+                for serverDefault in values["serverDefaults"]:
+                    if serverDefault["id"] == cert_key:
+                        certificates.append({
+                            "vulnerability": cert_value["name"],
                             "severity": serverDefault["severity"],
-                            "information":  serverDefault["finding"]
-                        }
-                    )
+                            "information": serverDefault["finding"]
+                        })
 
-            results.append(
-                {
-                    "filepath": Path(file.name).resolve().as_posix(),
-                    "host_ip": values["ip"],
-                    "host_dns": values["targetHost"],
-                    "port": int(values["port"]),
-                    "certificates": certificates
-                }
-            )
+                # Now, look for dynamically named certs like "cert_key <hostCert#X>"
+                cert_pattern = re.compile(rf"^{cert_key}\s*<hostCert#1+>$")
+                for serverDefault in values["serverDefaults"]:
+                    if cert_pattern.match(serverDefault["id"]):
+                        certificates.append({
+                            "vulnerability": cert_value["name"],
+                            "severity": serverDefault["severity"],
+                            "information": serverDefault["finding"]
+                        })
+
+            # Add the parsed certificates to the results
+            results.append({
+                "filepath": Path(file.name).resolve().as_posix(),
+                "host_ip": values["ip"],
+                "host_dns": values["targetHost"],
+                "port": int(values["port"]),
+                "certificates": certificates
+            })
+
     except KeyError as e:
         logging.exception("KeyError: {}".format(e))
         logging.exception("Skipping JSON file: " + file.name)
@@ -461,7 +545,6 @@ def get_host_certificates(file):
         logging.exception("Skipping JSON file: " + file.name)
 
     return results
-
 
 def get_host_protocols(file):
     results = []
