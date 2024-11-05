@@ -76,6 +76,10 @@ You will find your scan results in the `scans/` directory.
 You can upgrade FireAbend by simply issuing a git pull. This will fetch the latest stable release.
 
 ````
+# remove local version of nuclei templates
+rm -rf helpers/nuclei/nuclei-templates
+
+# pull the latest repo updates
 git pull
 ````
 
