@@ -454,7 +454,7 @@ declare TLS_CIPHER_AUTH=()
 declare TLS_CIPHER_ENC=()
 declare TLS_CIPHER_EXPORT=()
 declare TLS_CIPHER_OSSL_SUPPORTED=()
-declare TLS13_OSSL_CIPHERS="TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_CCM_SHA256:TLS_AES_128_CCM_8_SHA256"
+declare TLS13_OSSL_CIPHERS="TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_CCM_SHA256:TLS_AES_128_CCM_8_SHA256:TLS_SHA256_SHA256:TLS_SHA384_SHA384"
 
 
 ########### Some predefinitions: date, sed (we always use tests for binaries and NOT try to determine
@@ -972,9 +972,14 @@ join_by() {
 actually_supported_osslciphers() {
      local ciphers="$1"
      local tls13_ciphers="$TLS13_OSSL_CIPHERS"
+     local cipher tls13_supported_ciphers=""
      local options="$3 "
 
      [[ "$2" != ALL ]] && tls13_ciphers="$2"
+     for cipher in ${tls13_ciphers//:/ }; do
+          [[ "$TLS13_OSSL_CIPHERS" =~ $cipher ]] && tls13_supported_ciphers+=":$cipher"
+     done
+     tls13_ciphers="${tls13_supported_ciphers:1}"
      "$HAS_SECLEVEL" && [[ -n "$ciphers" ]] && ciphers="@SECLEVEL=0:$1"
      # With OpenSSL 1.0.2 the only way to exclude SSLv2 ciphers is to use the -tls1 option.
      # However, with newer versions of OpenSSL, the -tls1 option excludes TLSv1.2 ciphers.
@@ -1001,7 +1006,10 @@ strip_inconsistent_ciphers() {
      local -i proto=0x$1
      local cipherlist="$2"
 
-     [[ $proto -lt 4 ]] && cipherlist="${cipherlist//, 13,0[0-9a-fA-F]/}"
+     if [[ $proto -lt 4 ]]; then
+          cipherlist="${cipherlist//, 13,0[0-9a-fA-F]/}"
+          cipherlist="${cipherlist//, [cC]0,[bB][45]/}"
+     fi
      if [[ $proto -lt 3 ]]; then
           cipherlist="${cipherlist//, 00,3[b-fB-F]/}"
           cipherlist="${cipherlist//, 00,40/}"
@@ -2035,7 +2043,7 @@ check_revocation_ocsp() {
      local stapled_response="$2"
      local jsonID="$3"
      local tmpfile=""
-     local -i success
+     local -i success=1
      local response=""
      local host_header=""
 
@@ -2052,9 +2060,20 @@ check_revocation_ocsp() {
      tmpfile=$TEMPDIR/${NODE}-${NODEIP}.${uri##*\/} || exit $ERR_FCREATE
      if [[ -n "$stapled_response" ]]; then
           hex2binary "$stapled_response" > "$TEMPDIR/stapled_ocsp_response.dd"
-          $OPENSSL ocsp -no_nonce -respin "$TEMPDIR/stapled_ocsp_response.dd" \
-               -issuer $TEMPDIR/hostcert_issuer.pem -verify_other $TEMPDIR/intermediatecerts.pem \
-               -CAfile <(cat $ADDTL_CA_FILES "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
+          if [[ "$stapled_response" =~ 06052[bB]0[eE]03021[aA] ]]; then
+               # Response appears to use SHA-1 in CertID
+               $OPENSSL ocsp -no_nonce -respin "$TEMPDIR/stapled_ocsp_response.dd" \
+                    -issuer $TEMPDIR/hostcert_issuer.pem -verify_other $TEMPDIR/intermediatecerts.pem \
+                    -CAfile <(cat $ADDTL_CA_FILES "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
+               success=$?
+          fi
+          if [[ $success -ne 0 ]] && [[ "$stapled_response" =~ 0609608648016503040201 ]]; then
+               # Response appears to use SHA-256 in CertID
+               $OPENSSL ocsp -sha256 -no_nonce -respin "$TEMPDIR/stapled_ocsp_response.dd" \
+                    -issuer $TEMPDIR/hostcert_issuer.pem -verify_other $TEMPDIR/intermediatecerts.pem \
+                    -CAfile <(cat $ADDTL_CA_FILES "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
+               success=$?
+          fi
      else
           host_header=${uri##http://}
           host_header=${host_header%%/*}
@@ -2069,8 +2088,9 @@ check_revocation_ocsp() {
           $OPENSSL ocsp -no_nonce ${host_header} -url "$uri" \
                -issuer $TEMPDIR/hostcert_issuer.pem -verify_other $TEMPDIR/intermediatecerts.pem \
                -CAfile <(cat $ADDTL_CA_FILES "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
+          success=$?
      fi
-     if [[ $? -eq 0 ]] && grep -Fq "Response verify OK" "$tmpfile"; then
+     if [[ $success -eq 0 ]] && grep -Fq "Response verify OK" "$tmpfile"; then
           response="$(grep -F "$HOSTCERT: " "$tmpfile")"
           response="${response#$HOSTCERT: }"
           response="${response%\.}"
@@ -2220,6 +2240,7 @@ string_to_asciihex() {
 s_client_options() {
      local options=" $1"
      local ciphers="notpresent" tls13_ciphers="notpresent"
+     local cipher tls13_supported_ciphers=""
 
      # Extract the TLSv1.3 ciphers and the non-TLSv1.3 ciphers
      if [[ " $options " =~ \ -cipher\  ]]; then
@@ -2236,6 +2257,10 @@ s_client_options() {
           tls13_ciphers="${tls13_ciphers##\'}"
           tls13_ciphers="${tls13_ciphers%%\'}"
           [[ "$tls13_ciphers" == ALL ]] && tls13_ciphers="$TLS13_OSSL_CIPHERS"
+          for cipher in ${tls13_ciphers//:/ }; do
+               [[ "$TLS13_OSSL_CIPHERS" =~ $cipher ]] && tls13_supported_ciphers+=":$cipher"
+          done
+          tls13_ciphers="${tls13_supported_ciphers:1}"
      fi
 
      # Don't include the -servername option for an SSLv2 or SSLv3 ClientHello.
@@ -2288,6 +2313,13 @@ s_client_options() {
      if "$HAS_SECLEVEL"; then
           if [[ "$ciphers" == notpresent ]]; then
                [[ ! " $options " =~ \ -tls1_3\  ]] && ciphers="@SECLEVEL=0:ALL:COMPLEMENTOFALL"
+               if "$HAS_CIPHERSUITES" && [[ "$tls13_ciphers" == notpresent ]] &&  \
+                    [[ ! " $options " =~ \ -ssl[2|3]\  ]] && \
+                    [[ ! " $options " =~ \ -tls1\  ]] && \
+                    [[ ! " $options " =~ \ -tls1_[1|2]\  ]] && \
+                    [[ ! " $options " =~ \ -no_tls1_3\  ]]; then
+                    tls13_ciphers="$TLS13_OSSL_CIPHERS"
+               fi
           elif [[ -n "$ciphers" ]]; then
                ciphers="@SECLEVEL=0:$ciphers"
           fi
@@ -3284,7 +3316,7 @@ sub_f5_bigip_check() {
           [[ -z "$cookievalue" ]] && break
           cookievalue=${cookievalue/;/}
           debugme echo $cookiename : $cookievalue
-          if grep -Eq '[0-9]{9,10}\.[0-9]{3,5}\.0000' <<< "$cookievalue"; then
+          if grep -Eq '[0-9]{8,10}\.[0-9]{3,5}\.0000' <<< "$cookievalue"; then
                ip="$(f5_ip_oldstyle "$cookievalue")"
                port="$(f5_port_decode $cookievalue)"
                out "${spaces}F5 cookie (default IPv4 pool member): "; pr_italic "$cookiename "; prln_svrty_medium "${ip}:${port}"
@@ -3989,7 +4021,7 @@ run_cipher_match(){
                               ! "${ciphers_found2[i]}" && ciphers_to_test+=", ${hexcode2[i]}"
                          done
                          [[ -z "$ciphers_to_test" ]] && break
-                         [[ "$proto" == 04 ]] && [[ ! "$ciphers_to_test" =~ ,\ 13,[0-9a-f][0-9a-f] ]] && break
+                         [[ "$proto" == 04 ]] && [[ ! "$ciphers_to_test" =~ ,\ 13,[0-9a-f][0-9a-f] ]] && [[ ! "$ciphers_to_test" =~ ,\ [cC]0,[bB][45] ]] && break
                          ciphers_to_test="$(strip_inconsistent_ciphers "$proto" "$ciphers_to_test")"
                          [[ -z "$ciphers_to_test" ]] && break
                          if "$SHOW_SIGALGO"; then
@@ -4264,7 +4296,7 @@ run_allciphers() {
                          ! "${ciphers_found2[i]}" && ciphers_to_test+=", ${hexcode2[i]}"
                     done
                     [[ -z "$ciphers_to_test" ]] && break
-                    [[ "$proto" == 04 ]] && [[ ! "$ciphers_to_test" =~ ,\ 13,[0-9a-f][0-9a-f] ]] && break
+                    [[ "$proto" == 04 ]] && [[ ! "$ciphers_to_test" =~ ,\ 13,[0-9a-f][0-9a-f] ]] && [[ ! "$ciphers_to_test" =~ ,\ [cC]0,[bB][45] ]] && break
                     ciphers_to_test="$(strip_inconsistent_ciphers "$proto" "$ciphers_to_test")"
                     [[ -z "$ciphers_to_test" ]] && break
                     if "$SHOW_SIGALGO"; then
@@ -4380,9 +4412,9 @@ ciphers_by_strength() {
                if { "$using_sockets" || "${TLS_CIPHER_OSSL_SUPPORTED[i]}"; }; then
                     if [[ ${#hexc} -eq 9 ]] && [[ "$proto" != -ssl2 ]]; then
                          if [[ "$proto" == -tls1_3 ]]; then
-                              [[ "${hexc:2:2}" == 13 ]] && nr_ciphers+=1
+                              [[ "${TLS_CIPHER_SSLVERS[i]}" == TLSv1.3 ]] && nr_ciphers+=1
                          elif [[ "$proto" == -tls1_2 ]]; then
-                              [[ "${hexc:2:2}" != 13 ]] && nr_ciphers+=1
+                              [[ "${TLS_CIPHER_SSLVERS[i]}" != TLSv1.3 ]] && nr_ciphers+=1
                          elif [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA256 ]] && [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA384 ]] && \
                               [[ "${TLS_CIPHER_RFC_NAME[i]}" != *_CCM ]] && [[ "${TLS_CIPHER_RFC_NAME[i]}" != *_CCM_8 ]]; then
                               nr_ciphers+=1
@@ -5487,7 +5519,8 @@ run_protocols() {
                     fileout "$jsonID" "OK" "not offered"
                     add_proto_offered ssl2 no
                     ;;
-               4)   out "likely "; pr_svrty_best "not offered (OK), "
+               4)   # STARTTLS problem
+                    out "likely "; pr_svrty_best "not offered (OK), "
                     fileout "$jsonID" "OK" "likely not offered"
                     add_proto_offered ssl2 no
                     pr_warning "received 4xx/5xx after STARTTLS handshake"; outln "$debug_recomm"
@@ -5665,7 +5698,7 @@ run_protocols() {
                pr_warning "TLS downgraded to STARTTLS plaintext"; outln
                fileout "$jsonID" "WARN" "TLS downgraded to STARTTLS plaintext"
                ;;
-          4)   out "likely not offered, "
+          4)   out "likely not offered, "                                  # STARTTLS problem
                fileout "$jsonID" "INFO" "likely not offered"
                add_proto_offered tls1 no
                pr_warning "received 4xx/5xx after STARTTLS handshake"; outln "$debug_recomm"
@@ -5750,8 +5783,8 @@ run_protocols() {
                pr_warning "TLS downgraded to STARTTLS plaintext"; outln
                fileout "$jsonID" "WARN" "TLS downgraded to STARTTLS plaintext"
                ;;
-          4)   out "likely not offered, "
-               fileout "$jsonID" "INFO" "not offered"
+          4)   out "likely not offered, "                        # STARTTLS problem
+               fileout "$jsonID" "INFO" "likely not offered"
                add_proto_offered tls1_1 no
                pr_warning "received 4xx/5xx after STARTTLS handshake"; outln "$debug_recomm"
                fileout "$jsonID" "WARN" "received 4xx/5xx after STARTTLS handshake${debug_recomm}"
@@ -6022,8 +6055,8 @@ run_protocols() {
                pr_warning "TLS downgraded to STARTTLS plaintext"; outln
                fileout "$jsonID" "WARN" "TLS downgraded to STARTTLS plaintext"
                ;;
-          4)   out "likely not offered, "
-               fileout "$jsonID" "INFO" "not offered"
+          4)   out "likely not offered, "              # STARTTLS problem
+               fileout "$jsonID" "INFO" "likely not offered"
                add_proto_offered tls1_3 no
                pr_warning "received 4xx/5xx after STARTTLS handshake"; outln "$debug_recomm"
                fileout "$jsonID" "WARN" "received 4xx/5xx after STARTTLS handshake${debug_recomm}"
@@ -6066,10 +6099,15 @@ listciphers() {
      local -i ret
      local debugname=""
      local ciphers="$1"
-     local tls13_ciphers="$TLS13_OSSL_CIPHERS"
+     local tls13_ciphers="$TLS13_OSSL_CIPHERS" cipher tls13_supported_ciphers=""
      local options="$3 "
 
      [[ "$2" != ALL ]] && tls13_ciphers="$2"
+     for cipher in ${tls13_ciphers//:/ }; do
+          [[ "$TLS13_OSSL_CIPHERS" =~ $cipher ]] && tls13_supported_ciphers+=":$cipher"
+     done
+     tls13_ciphers="${tls13_supported_ciphers:1}"
+     
      "$HAS_SECLEVEL" && [[ -n "$ciphers" ]] && ciphers="@SECLEVEL=0:$1"
      ! "$HAS_TLS1" && options="${options//-tls1 /}"
      if "$HAS_CIPHERSUITES"; then
@@ -6138,7 +6176,7 @@ sub_cipherlists() {
                for proto in 04 03 02 01 00; do
                     # If $cipherlist doesn't contain any TLSv1.3 ciphers, then there is
                     # no reason to try a TLSv1.3 ClientHello.
-                    [[ "$proto" == 04 ]] && [[ ! "$6" =~ 13,0 ]] && continue
+                    [[ "$proto" == 04 ]] && [[ ! "$6" =~ 13,0 ]] && [[ ! "$6" =~ [cC]0,[bB][45] ]] && continue
                     [[ $(has_server_protocol "$proto") -eq 1 ]] && continue
                     cipherlist="$(strip_inconsistent_ciphers "$proto" ", $6")"
                     cipherlist="${cipherlist:2}"
@@ -6277,13 +6315,14 @@ run_cipherlists() {
      local hexc hexcode strength
      local -i i
      local -i ret=0
-     local ossl_null_ciphers null_ciphers sslv2_null_ciphers
+     local ossl_null_ciphers ossl_null_ciphersuites null_ciphers sslv2_null_ciphers
      local ossl_anon_ciphers anon_ciphers sslv2_anon_ciphers
      local ossl_exp_ciphers exp_ciphers sslv2_exp_ciphers
      local ossl_low_ciphers low_ciphers sslv2_low_ciphers
      local ossl_tdes_ciphers tdes_ciphers sslv2_tdes_ciphers
      local ossl_obsoleted_ciphers obsoleted_ciphers
-     local strong_ciphers
+     local ossl_good_ciphers good_ciphers
+     local ossl_strong_ciphers ossl_strong_ciphersuites strong_ciphers
      local cwe="CWE-327"
      local cwe2="CWE-310"
      local cve=""
@@ -6297,7 +6336,8 @@ run_cipherlists() {
      # conversion 2 byte ciphers via:  echo "$@" | sed -e 's/[[:xdigit:]]\{2\},/0x&/g'  -e 's/, /\n/g' | while read ci; do grep -wi $ci etc/cipher-mapping.txt; done
 
      ossl_null_ciphers='NULL:eNULL'
-     null_ciphers="c0,10, c0,06, c0,15, c0,0b, c0,01, c0,3b, c0,3a, c0,39, 00,b9, 00,b8, 00,b5, 00,b4, 00,2e, 00,2d, 00,b1, 00,b0, 00,2c, 00,3b, 00,02, 00,01, 00,82, 00,83, ff,87, 00,ff"
+     ossl_null_ciphersuites="TLS_SHA256_SHA256:TLS_SHA384_SHA384"
+     null_ciphers="c0,10, c0,06, c0,15, c0,0b, c0,01, c0,3b, c0,3a, c0,39, 00,b9, 00,b8, 00,b5, 00,b4, 00,2e, 00,2d, 00,b1, 00,b0, 00,2c, 00,3b, 00,02, 00,01, 00,82, 00,83, c0,b4, c0,b5, ff,87, 00,ff"
      sslv2_null_ciphers="FF,80,10, 00,00,00"
 
      ossl_anon_ciphers='aNULL:ADH'
@@ -6333,6 +6373,7 @@ run_cipherlists() {
      good_ciphers="00,9C, 00,9D, 00,A0, 00,A1, 00,A4, 00,A5, 00,A8, 00,A9, 00,AC, 00,AD, C0,2D, C0,2E, C0,31, C0,32, C0,50, C0,51, C0,54, C0,55, C0,58, C0,59, C0,5E, C0,5F, C0,62, C0,63, C0,6A, C0,6B, C0,6E, C0,6F, C0,7A, C0,7B, C0,7E, C0,7F, C0,82, C0,83, C0,88, C0,89, C0,8C, C0,8D, C0,8E, C0,8F, C0,92, C0,93, C0,9C, C0,9D, C0,A0, C0,A1, C0,A4, C0,A5, C0,A8, C0,A9, CC,AB, CC,AE, 00,FF"
 
      ossl_strong_ciphers='AESGCM:CHACHA20:CamelliaGCM:AESCCM:ARIAGCM:!kPSK:!kRSAPSK:!kRSA:!kDH:!kECDH:!aNULL'
+     ossl_strong_ciphersuites="TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_CCM_SHA256:TLS_AES_128_CCM_8_SHA256"
      # grep AEAD etc/cipher-mapping.txt | grep -E 'TLS_ECDHE|TLS_DHE|TLS_PSK_DHE|TLSv1.3'
      strong_ciphers="00,9E, 00,9F, 00,A2, 00,A3, 00,AA, 00,AB, 13,01, 13,02, 13,03, 13,04, 13,05, 16,B7, 16,B8, 16,B9, 16,BA, C0,2B, C0,2C, C0,2F, C0,30, C0,52, C0,53, C0,56, C0,57, C0,5C, C0,5D, C0,60, C0,61, C0,6C, C0,6D, C0,7C, C0,7D, C0,80, C0,81, C0,86, C0,87, C0,8A, C0,8B, C0,90, C0,91, C0,9E, C0,9F, C0,A2, C0,A3, C0,A6, C0,A7, C0,AA, C0,AB, C0,AC, C0,AD, C0,AE, C0,AF, CC,13, CC,14, CC,15, CC,A8, CC,A9, CC,AA, CC,AC, CC,AD, 00,FF"
 
@@ -6347,7 +6388,7 @@ run_cipherlists() {
      # argv[9]: CVE
      # argv[10]: CWE
 
-     sub_cipherlists "$ossl_null_ciphers"      "" " NULL ciphers (no encryption)                    "     1 "NULL"      "$null_ciphers"    "$sslv2_null_ciphers"   "$using_sockets" "$cve" "$cwe"
+     sub_cipherlists "$ossl_null_ciphers"      "$ossl_null_ciphersuites" " NULL ciphers (no encryption)                    "     1 "NULL"      "$null_ciphers"    "$sslv2_null_ciphers"   "$using_sockets" "$cve" "$cwe"
      ret=$?
      sub_cipherlists "$ossl_anon_ciphers"      "" " Anonymous NULL Ciphers (no authentication)      "     1 "aNULL"     "$anon_ciphers"    "$sslv2_anon_ciphers"   "$using_sockets" "$cve" "$cwe"
      ret=$((ret + $?))
@@ -6361,7 +6402,7 @@ run_cipherlists() {
      ret=$((ret + $?))
      sub_cipherlists "$ossl_good_ciphers"      "" " Strong encryption (AEAD ciphers) with no FS     "     6 "STRONG_NOFS"      "$good_ciphers"     ""                     "$using_sockets" ""      ""
      ret=$((ret + $?))
-     sub_cipherlists "$ossl_strong_ciphers" 'ALL' " Forward Secrecy strong encryption (AEAD ciphers)"    7 "STRONG_FS"     "$strong_ciphers"   ""                     "$using_sockets" ""      ""
+     sub_cipherlists "$ossl_strong_ciphers" "$ossl_strong_ciphersuites" " Forward Secrecy strong encryption (AEAD ciphers)"    7 "STRONG_FS"     "$strong_ciphers"   ""                     "$using_sockets" ""      ""
      ret=$((ret + $?))
 
      outln
@@ -6502,7 +6543,7 @@ get_cipher_quality() {
                # We have an OpenSSL name and can't convert it to the RFC name which is rarely
                # the case, see "prepare_arrays()" and "./etc/cipher-mapping.txt"
                case "$cipher" in
-                    *NULL*|EXP*|ADH*|AECDH*|*anon*)
+                    *NULL*|EXP*|ADH*|AECDH*|*anon*|TLS_SHA*)
                          return 1
                          ;;
                     *RC4*|*RC2*|*MD5|*M1)
@@ -6544,7 +6585,7 @@ get_cipher_quality() {
 
      # Now we look at the RFC cipher names. The sequence matters - as above.
      case "$cipher" in
-          *NULL*|*EXP*|*_DES40_*|*anon*)
+          *NULL*|*EXP*|*_DES40_*|*anon*|TLS_SHA*)
                return 1
                ;;
           *RC4*|*RC2*|*MD5|*MD5_1)
@@ -6869,7 +6910,7 @@ run_server_preference() {
                       "c0,2c, c0,30, 00,9f, cc,a9, cc,a8, cc,aa, c0,2b, c0,2f, 00,9a, 00,96,
                        00,9e, c0,24, c0,28, 00,6b, c0,23, c0,27, 00,67, c0,0a,
                        c0,14, 00,39, c0,09, c0,13, 00,33, 00,9d, 00,9c, 13,02,
-                       13,03, 13,01, 13,04, 13,05, 00,3d, 00,3c, 00,35, 00,2f, 00,ff" \
+                       13,03, 13,01, 13,04, 13,05, c0,b4, c0,b5, 00,3d, 00,3c, 00,35, 00,2f, 00,ff" \
                       "ephemeralkey"
           sclient_success=$?
           if [[ $sclient_success -eq 0 ]]; then
@@ -6911,12 +6952,12 @@ run_server_preference() {
 
      # Some servers don't have a TLS 1.3 cipher order, see #1163
      if [[ "$default_proto" == TLSv1.3 ]]; then
-          tls_sockets "04" "13,05, 13,04, 13,03, 13,02, 13,01, 00,ff"
+          tls_sockets "04" "c0,b5, c0,b4, 13,05, 13,04, 13,03, 13,02, 13,01, 00,ff"
           [[ $? -ne 0 ]] && ret=1 && prln_fixme "something weird happened around line $((LINENO - 1))"
           cp "$TEMPDIR/$NODEIP.parse_tls_serverhello.txt" $TMPFILE
           tls13_cipher1=$(get_cipher $TMPFILE)
           debugme tm_out "TLS 1.3: --> $tls13_cipher1\n"
-          tls_sockets "04" "13,01, 13,02, 13,03, 13,04, 13,05, 00,ff"
+          tls_sockets "04" "13,01, 13,02, 13,03, 13,04, 13,05, c0,b4, c0,b5, 00,ff"
           [[ $? -ne 0 ]] && ret=1 && prln_fixme "something weird happened around line $((LINENO - 1))"
           cp "$TEMPDIR/$NODEIP.parse_tls_serverhello.txt" $TMPFILE
           tls13_cipher2=$(get_cipher $TMPFILE)
@@ -7303,9 +7344,9 @@ cipher_pref_check() {
                          index[nr_nonossl_ciphers]=$i
                          # Only test ciphers that are relevant to the protocol.
                          if [[ $proto == tls1_3 ]]; then
-                              [[ "${hexc:2:2}" == 13 ]] && nr_nonossl_ciphers+=1
+                              [[ "${TLS_CIPHER_SSLVERS[i]}" == TLSv1.3 ]] && nr_nonossl_ciphers+=1
                          elif [[ $proto == tls1_2 ]]; then
-                              [[ "${hexc:2:2}" != 13 ]] && nr_nonossl_ciphers+=1
+                              [[ "${TLS_CIPHER_SSLVERS[i]}" != TLSv1.3 ]] && nr_nonossl_ciphers+=1
                          elif [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA256 ]] && \
                               [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA384 ]] && \
                               [[ "${TLS_CIPHER_RFC_NAME[i]}" != *_CCM ]] && \
@@ -7377,9 +7418,9 @@ cipher_pref_check() {
                     hexcode[nr_ciphers]="${hexc:2:2},${hexc:7:2}"
                     rfc_ciph[nr_ciphers]="${TLS_CIPHER_RFC_NAME[i]}"
                     if [[ $proto == tls1_3 ]]; then
-                         [[ "${hexc:2:2}" == 13 ]] && nr_ciphers+=1
+                         [[ "${TLS_CIPHER_SSLVERS[i]}" == TLSv1.3 ]] && nr_ciphers+=1
                     elif [[ $proto == tls1_2 ]]; then
-                         [[ "${hexc:2:2}" != 13 ]] && nr_ciphers+=1
+                         [[ "${TLS_CIPHER_SSLVERS[i]}" != TLSv1.3 ]] && nr_ciphers+=1
                     elif [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA256 ]] && \
                          [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA384 ]] && \
                          [[ "${TLS_CIPHER_RFC_NAME[i]}" != *_CCM ]] && \
@@ -7396,9 +7437,9 @@ cipher_pref_check() {
                     hexcode[nr_ciphers]="${hexc:2:2},${hexc:7:2}"
                     rfc_ciph[nr_ciphers]="${TLS_CIPHER_RFC_NAME[i]}"
                     if [[ $proto == tls1_3 ]]; then
-                         [[ "${hexc:2:2}" == 13 ]] && nr_ciphers+=1
+                         [[ "${TLS_CIPHER_SSLVERS[i]}" == TLSv1.3 ]] && nr_ciphers+=1
                     elif [[ $proto == tls1_2 ]]; then
-                         [[ "${hexc:2:2}" != 13 ]] && nr_ciphers+=1
+                         [[ "${TLS_CIPHER_SSLVERS[i]}" != TLSv1.3 ]] && nr_ciphers+=1
                     elif [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA256 ]] && \
                          [[ ! "${TLS_CIPHER_RFC_NAME[i]}" =~ SHA384 ]] && \
                          [[ "${TLS_CIPHER_RFC_NAME[i]}" != *_CCM ]] && \
@@ -7624,7 +7665,7 @@ determine_trust() {
      [[ -n $json_postfix ]] && spaces="                                "
 
      case $OSSL_VER_MAJOR.$OSSL_VER_MINOR in
-          1.0.2|1.1.0|1.1.1|2.[1-9].*|3.*)           # 2.x is LibreSSL. 2.1.1 was tested to work, below is not sure
+          1.0.2|1.1.0|1.1.1|2.[1-9].*|3.*|4.*)           # 2.x is LibreSSL. 2.1.1 was tested to work, below is not sure
                :
           ;;
           *)   addtl_warning="Your $OPENSSL <= 1.0.2 might be too unreliable to determine trust"
@@ -8774,7 +8815,7 @@ certificate_transparency() {
 
      if [[ $number_of_certificates -gt 1 ]] && ! "$SSL_NATIVE"; then
           if [[ "$tls_version" == 0304 ]]; then
-               ciphers=", 13,01, 13,02, 13,03, 13,04, 13,05"
+               ciphers=", 13,01, 13,02, 13,03, 13,04, 13,05, c0,b4, c0,b5"
                if [[ "$cipher" == tls1_3_RSA ]]; then
                     extra_extns=", 00,0d,00,10,00,0e,08,04,08,05,08,06,04,01,05,01,06,01,02,01"
                elif [[ "$cipher" == tls1_3_ECDSA ]]; then
@@ -10529,13 +10570,10 @@ run_fs() {
                sigalg[nr_supported_ciphers]=""
                ossl_supported[nr_supported_ciphers]=true
                nr_supported_ciphers+=1
-          done < <(actually_supported_osslciphers "$fs_cipher_list" "ALL" "-V")
+          done < <(actually_supported_osslciphers "$fs_cipher_list" "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_CCM_SHA256:TLS_AES_128_CCM_8_SHA256" "-V")
      fi
 
-     if [[ $(has_server_protocol "tls1_3") -eq 0 ]]; then
-          # All TLSv1.3 cipher suites offer robust FS.
-          sclient_success=0
-     elif "$using_sockets"; then
+     if "$using_sockets"; then
           tls_sockets "04" "${fs_hex_cipher_list:2}, 00,ff"
           sclient_success=$?
           [[ $sclient_success -eq 2 ]] && sclient_success=0
@@ -10547,7 +10585,7 @@ run_fs() {
           fi
      else
           debugme echo $nr_supported_ciphers
-          debugme echo $(actually_supported_osslciphers $fs_cipher_list "ALL")
+          debugme echo $(actually_supported_osslciphers $fs_cipher_list "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_CCM_SHA256:TLS_AES_128_CCM_8_SHA256")
           if [[ "$nr_supported_ciphers" -le "$CLIENT_MIN_FS" ]]; then
                outln
                prln_local_problem "You only have $nr_supported_ciphers FS ciphers on the client side "
@@ -10568,7 +10606,7 @@ run_fs() {
                curves_list2="${curves_list2// /:}"
           fi
           curves_list1="${curves_list1// /:}"
-          $OPENSSL s_client $(s_client_options "-cipher $fs_cipher_list -ciphersuites ALL $STARTTLS $BUGS -connect $NODEIP:$PORT $PROXY $SNI") >$TMPFILE 2>$ERRFILE </dev/null
+          $OPENSSL s_client $(s_client_options "-cipher $fs_cipher_list -ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_CCM_SHA256:TLS_AES_128_CCM_8_SHA256 $STARTTLS $BUGS -connect $NODEIP:$PORT $PROXY $SNI") >$TMPFILE 2>$ERRFILE </dev/null
           sclient_connect_successful $? $TMPFILE
           sclient_success=$?
           [[ $sclient_success -eq 0 ]] && [[ $(grep -ac "BEGIN CERTIFICATE" $TMPFILE) -eq 0 ]] && sclient_success=1
@@ -10678,7 +10716,7 @@ run_fs() {
                               ! "${ciphers_found[i]}" && ciphers_to_test+=", ${hexcode[i]}"
                          done
                          [[ -z "$ciphers_to_test" ]] && break
-                         [[ "$proto" == "04" ]] && [[ ! "$ciphers_to_test" =~ ,\ 13,[0-9a-f][0-9a-f] ]] && break
+                         [[ "$proto" == "04" ]] && [[ ! "$ciphers_to_test" =~ ,\ 13,[0-9a-f][0-9a-f] ]] && [[ ! "$ciphers_to_test" =~ ,\ [cC]0,[bB][45] ]] && break
                          ciphers_to_test="$(strip_inconsistent_ciphers "$proto" "$ciphers_to_test")"
                          [[ -z "$ciphers_to_test" ]] && break
                          if "$WIDE" && "$SHOW_SIGALGO"; then
@@ -12550,7 +12588,7 @@ derive-handshake-traffic-keys() {
      local cipher="$1" handshake_secret="$2" transcript="$3"
      local sender="$4"
      local hash_fn
-     local -i hash_len key_len
+     local -i hash_len key_len iv_len
      local handshake_traffic_secret label key iv finished="0000"
 
      if [[ "$cipher" == *SHA256 ]]; then
@@ -12562,13 +12600,14 @@ derive-handshake-traffic-keys() {
      else
           return 1
      fi
-     if [[ "$cipher" == *AES_128* ]]; then
-          key_len=16
-     elif [[ "$cipher" == *AES_256* ]] || [[ "$cipher" == *CHACHA20_POLY1305* ]]; then
-          key_len=32
-     else
-          return 1
-     fi
+     iv_len=12
+     case "$cipher" in
+          *AES_128*) key_len=16 ;;
+          *AES_256*|*CHACHA20_POLY1305*) key_len=32 ;;
+          TLS_SHA256_SHA256) key_len=32; iv_len=32 ;;
+          TLS_SHA384_SHA384) key_len=48; iv_len=48 ;;
+          *) return 1 ;;
+     esac
 
      if [[ "${TLS_SERVER_HELLO:8:2}" == 7F ]] && [[ 0x${TLS_SERVER_HELLO:10:2} -lt 0x14 ]]; then
           if [[ "$sender" == server ]]; then
@@ -12592,7 +12631,7 @@ derive-handshake-traffic-keys() {
      key="$(derive-traffic-key "$hash_fn" "$handshake_traffic_secret" "6b6579" "$key_len")"
      [[ $? -ne 0 ]] && return 1
      # "6976" = "iv"
-     iv="$(derive-traffic-key "$hash_fn" "$handshake_traffic_secret" "6976" "12")"
+     iv="$(derive-traffic-key "$hash_fn" "$handshake_traffic_secret" "6976" "$iv_len")"
      [[ $? -ne 0 ]] && return 1
      if [[ $DEBUG -ge 1 ]] || [[ "$sender" == client ]]; then
           # "66696e6973686564" = "finished"
@@ -12643,7 +12682,7 @@ derive-application-traffic-keys() {
      local cipher="$1" master_secret="$2" transcript="$3"
      local sender="$4"
      local hash_fn
-     local -i key_len
+     local -i key_len iv_len
      local application_traffic_secret_0 label key iv
 
      if [[ "$cipher" == *SHA256 ]]; then
@@ -12653,13 +12692,14 @@ derive-application-traffic-keys() {
      else
           return 1
      fi
-     if [[ "$cipher" == *AES_128* ]]; then
-          key_len=16
-     elif [[ "$cipher" == *AES_256* ]] || [[ "$cipher" == *CHACHA20_POLY1305* ]]; then
-          key_len=32
-     else
-          return 1
-     fi
+     iv_len=12
+     case "$cipher" in
+          *AES_128*) key_len=16 ;;
+          *AES_256*|*CHACHA20_POLY1305*) key_len=32 ;;
+          TLS_SHA256_SHA256) key_len=32; iv_len=32 ;;
+          TLS_SHA384_SHA384) key_len=48; iv_len=48 ;;
+          *) return 1 ;;
+     esac
 
      if [[ "${TLS_SERVER_HELLO:8:2}" == 7F ]] && [[ 0x${TLS_SERVER_HELLO:10:2} -lt 0x14 ]]; then
           if [[ "$sender" == server ]]; then
@@ -12683,7 +12723,7 @@ derive-application-traffic-keys() {
      key="$(derive-traffic-key "$hash_fn" "$application_traffic_secret_0" "6b6579" "$key_len")"
      [[ $? -ne 0 ]] && return 1
      # "6976" = "iv"
-     iv="$(derive-traffic-key "$hash_fn" "$application_traffic_secret_0" "6976" "12")"
+     iv="$(derive-traffic-key "$hash_fn" "$application_traffic_secret_0" "6976" "$iv_len")"
      [[ $? -ne 0 ]] && return 1
      tm_out "$key $iv"
 }
@@ -13592,6 +13632,53 @@ gcm-encrypt() {
      return $?
 }
 
+# arg1: integrity-only TLS cipher
+# arg2: key
+# arg3: nonce
+# arg4: ciphertext
+# arg5: aad
+# arg6: expected tag
+# arg7: true if authentication tag should be checked. false otherwise.
+integrity_only_decrypt()
+{
+     local cipher="$1" key="$2" nonce="$3" ciphertext="$4" aad="$5" expected_tag="$(toupper "$6")"
+     local compute_tag="$7"
+     local hash_fn
+     local computed_tag
+
+     if "$compute_tag"; then
+          case "$cipher" in
+               TLS_SHA256_SHA256) hash_fn="-sha256" ;;
+               TLS_SHA384_SHA384) hash_fn="-sha384" ;;
+               *) return 7 ;;
+          esac
+          computed_tag="$(toupper "$(hmac "$hash_fn" "$key" "$nonce$aad$ciphertext")")"
+          if [[ "$computed_tag" != $expected_tag ]]; then
+               return 7
+          fi
+     fi
+     tm_out "$ciphertext"
+     return 0
+}
+
+# arg1: integrity-only TLS cipher
+# arg2: key
+# arg3: nonce
+# arg4: plaintext
+# arg5: additional authenticated data
+integrity_only_encrypt() {
+     local cipher="$1" key="$2" nonce="$3" plaintext="$4" aad="$5"
+     local hash_fn
+
+     case "$cipher" in
+          TLS_SHA256_SHA256) hash_fn="-sha256" ;;
+          TLS_SHA384_SHA384) hash_fn="-sha384" ;;
+          *) return 7 ;;
+     esac
+     tm_out "$plaintext$(hmac "$hash_fn" "$key" "$nonce$aad$plaintext")"
+     return 0
+}
+
 # arg1: TLS cipher
 # arg2: key
 # arg3: nonce (must be 96 bits in length)
@@ -13611,6 +13698,10 @@ sym-decrypt() {
                tag_len=16 ;;
           *CCM*|*GCM*|*CHACHA20_POLY1305*)
                tag_len=32 ;;
+          TLS_SHA256_SHA256)
+               tag_len=64 ;;
+          TLS_SHA384_SHA384)
+               tag_len=96 ;;
           *)
                return 7 ;;
      esac
@@ -13631,6 +13722,8 @@ sym-decrypt() {
           plaintext="$(chacha20_aead_decrypt "$key" "$nonce" "${ciphertext:0:ciphertext_len}" "$additional_data" "${ciphertext:ciphertext_len:tag_len}" "$compute_tag")"
      elif [[ "$cipher" =~ CCM ]]; then
           plaintext=$(ccm-decrypt "$cipher" "$key" "$nonce" "${ciphertext:0:ciphertext_len}" "$additional_data" "${ciphertext:ciphertext_len:tag_len}" "$compute_tag")
+     elif [[ "$cipher" == TLS_SHA256_SHA256 ]] || [[ "$cipher" == TLS_SHA384_SHA384 ]]; then
+          plaintext="$(integrity_only_decrypt "$cipher" "$key" "$nonce" "${ciphertext:0:ciphertext_len}" "$additional_data" "${ciphertext:ciphertext_len:tag_len}" "$compute_tag")"
      else # GCM
           plaintext=$(gcm-decrypt "$cipher" "$key" "$nonce" "${ciphertext:0:ciphertext_len}" "$additional_data" "${ciphertext:ciphertext_len:tag_len}" "$compute_tag")
      fi
@@ -13656,6 +13749,8 @@ sym-encrypt() {
           ciphertext=$(gcm-encrypt "$cipher" "$key" "$nonce" "$plaintext" "$additional_data")
      elif [[ "$cipher" =~ CHACHA20_POLY1305 ]]; then
           ciphertext="$(chacha20_aead_encrypt "$key" "$nonce" "$plaintext" "$additional_data")"
+     elif [[ "$cipher" == TLS_SHA256_SHA256 ]] || [[ "$cipher" == TLS_SHA384_SHA384 ]]; then
+          ciphertext=$(integrity_only_encrypt "$cipher" "$key" "$nonce" "$plaintext" "$additional_data")
      else
           return 7
      fi
@@ -16226,7 +16321,12 @@ tls_sockets() {
                else
                     finished_msg="14000030$(hmac-transcript "-sha384" "$finished_key" "$msg_transcript")"
                fi
-               [[ "$cipher" =~ CCM_8 ]] && tag_len=8 || tag_len=16
+               case "$cipher" in
+                    TLS_SHA256_SHA256) tag_len=32 ;;
+                    TLS_SHA384_SHA384) tag_len=48 ;;
+                    *CCM_8*) tag_len=8 ;;
+                    *) tag_len=16 ;;
+               esac
                aad="170303$(printf "%04X" "$(( ${#finished_msg}/2 + tag_len + 1 ))")"
                if "$include_headers"; then
                     # The header information was added to additional data in TLSv1.3 draft 25.
@@ -16303,7 +16403,12 @@ send_app_data() {
 
      read -r tls_version cipher server_key server_iv server_seq client_key client_iv client_seq <<< "$APP_TRAF_KEY_INFO"
      [[ "${tls_version:0:2}" == 7F ]] && [[ 0x${tls_version:2:2} -lt 25 ]] && include_headers=false
-     [[ "$cipher" =~ CCM_8 ]] && tag_len=8 || tag_len=16
+     case "$cipher" in
+          TLS_SHA256_SHA256) tag_len=32 ;;
+          TLS_SHA384_SHA384) tag_len=48 ;;
+          *CCM_8*) tag_len=8 ;;
+          *) tag_len=16 ;;
+     esac
 
      aad="170303$(printf "%04X" "$(( ${#plaintext}/2 + tag_len + 1 ))")"
      if "$include_headers"; then
@@ -19321,7 +19426,7 @@ run_starttls_injection() {
      esac
 
      uds="$TEMPDIR/uds"
-     $SOCAT FD:5 UNIX-LISTEN:$uds &
+     $SOCAT FD:5 UNIX-LISTEN:$uds 2>/dev/null &
      socat_pid=$!
 
      if "$HAS_UDS"; then
@@ -20769,7 +20874,7 @@ prepare_arrays() {
                          if [[ -n "$ossl_ciph" ]]; then
                               TLS_CIPHER_OSSL_SUPPORTED[i]=true
                               [[ "$ossl_ciph" != ${TLS_CIPHER_OSSL_NAME[i]} ]] && TLS_CIPHER_OSSL_NAME[i]="$ossl_ciph"
-                              [[ "${hexc:2:2}" == 13 ]] && TLS13_OSSL_CIPHERS+=":$ossl_ciph"
+                              [[ "${TLS_CIPHER_SSLVERS[i]}" == TLSv1.3 ]] && TLS13_OSSL_CIPHERS+=":$ossl_ciph"
                          fi
                     fi
                elif [[ $OSSL_VER_MAJOR -lt 1 ]]; then
@@ -22933,15 +23038,21 @@ run_rating() {
      pr_headlineln " Rating (experimental) "
      outln
 
-     [[ -n "$STARTTLS_PROTOCOL" ]] && set_grade_cap "T" "STARTTLS encryption is not mandatory for clients. STARTTLS can only be secured client-side"
+     [[ -n "$STARTTLS_PROTOCOL" ]] && set_grade_cap "T" "STARTTLS is prone to MITM downgrade attacks. A secure TLS upgrade can only be ensured client-side. As per RFC 8314 you should use implicit TLS rather than STARTTLS. For SMTP (port 25) and SIEVE this is not possible."
 
-     # TL;DR: E-mail transfer via port 25 is broken and the amendments suggested so far are duct tape. So please do not expect testssl.sh to shut up.
+     # TL;DR: STARTTLS connections are inherently insecure. A MITM can always intercept the connection, unless the client checks e.g. the
+     # certificate accordingly. A secure STARTTLS client is the key but we can't test for it. Especially e-mail transfer via port 25 is broken
+     # as message delivery is still more important than security. Amendments like DANE and MTA-STS are duct tape and depend on the client.
 
-     # Explanation: For other than SMTP you should use TLS as per RFC 8314 . For SMTP however there's this thing named reality: A mail server cannot
-     # just switch to the mail submission port 587 only and continue to receive mail from everyone. Even if you advertise this via SRV record (RFC 6186).
-     # For STARTTLS there's no way to tell for testssl.sh whether it is secure. A MitM can always intercept the connection, unless the client checks
-     # the certificate accordingly (it's getting better but some just don't). TLSA Records/DANE and MTA-STS (RFC-8461) on the server side can help too.
-     # But as said, it's useless unless the client MTA checks all that which no tool can check.
+     # Explanation: There are active MitM attacks possible when using STARTTLS like https://github.com/tintinweb/striptls or
+     # https://github.com/libcrack/starttlsstrip. It depends on the client only whether it can detect such downgrade attack.
+     # As some SMTP servers are still misconfigured with wrong certificates it's is still common practice for SMTP client MTAs to
+     # accept those wrong certificates -- delivering e-mails is more important. There is an e-mail submission port 587 but a mail server
+     # cannot just switch to it and continue to receive mail from everyone. Even if you advertise this via SRV record (RFC 6186).
+     # TLSA Records/DANE and MTA-STS (RFC-8461) on the server side can help too,
+     #
+     # For other than SMTP on port 25 and port 587 and SIEVE (there's no implicit TLS port) you should use implicit TLS as per RFC 8314.
+     # Instead of port 587 (STARTTLS) implicit TLS on port 465 should be considered.
 
      pr_bold " Rating specs"; out " (not complete)  "; outln "SSL Labs's 'SSL Server Rating Guide' (version 2009q from 2020-01-30)"
      pr_bold " Specification documentation  "; pr_url "https://github.com/ssllabs/research/wiki/SSL-Server-Rating-Guide"
@@ -23127,9 +23238,11 @@ run_rating() {
      # Pretty print - again, it's just nicer to read
      for reason in "${sorted_reasons[@]}"; do
           if [[ $reason_nr -eq 0 ]]; then
-               pr_bold " Grade cap reasons            "; outln "$reason"
+               pr_bold " Grade cap reasons            "
+               outln "$(out_row_aligned_max_width "$reason" "                                " $TERM_WIDTH)"
           else
-               outln "                              $reason"
+               outln "$(out_row_aligned_max_width "                              $reason" "                                " $TERM_WIDTH)"
+
           fi
           ((reason_nr++))
           fileout "grade_cap_reason_${reason_nr}" "INFO" "$reason"

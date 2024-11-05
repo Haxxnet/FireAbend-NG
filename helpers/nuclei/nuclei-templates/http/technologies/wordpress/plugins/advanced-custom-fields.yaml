@@ -1,7 +1,7 @@
 id: wordpress-advanced-custom-fields
 
 info:
-  name: Advanced Custom Fields (ACF) Detection
+  name: Secure Custom Fields Detection
   author: ricardomaia
   severity: info
   reference:
@@ -47,4 +47,4 @@ http:
         regex:
           - '(?i)Stable.tag:\s?([\w.]+)'
 
-# digest: 490a00463044022050222339d4cdbfd370e89ed27a07f11bf6ef74c4f836eedd8d393757e5d9a0e002207aa96c9f50e9a8ca41cdb069fe4d037ae082fdd81e44395487a329bd8895c924:922c64590222798bb761d5b6d8e72950
+# digest: 4b0a004830460221008ede3b992c7111e7be0e5117c467cac7e93e3e9e83bd57c4d699d875c9172acf022100be3b2c5bc658d5d62344961c5a40e16eb69e96ab6876a6704fc9459e44dc86d9:922c64590222798bb761d5b6d8e72950

@@ -72,6 +72,10 @@ foreach my $client ( @$ssllabs ) {
 				push @ciphersuites, "TLS_AES_128_CCM_SHA256"; }
 			elsif ( $suite == "4869" ) {
 				push @ciphersuites, "TLS_AES_128_CCM_8_SHA256"; }
+			elsif ( $suite == "49332" ) {
+				push @ciphersuites, "TLS_SHA256_SHA256"; }
+			elsif ( $suite == "49333" ) {
+				push @ciphersuites, "TLS_SHA384_SHA384"; }
 			elsif ( exists $ciphers{$suite} ) {
 				push @ciphers, $ciphers{$suite}; }
 			elsif ( $suite == "255" ) {
