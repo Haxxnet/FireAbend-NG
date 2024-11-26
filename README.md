@@ -41,8 +41,11 @@ options:
                         Custom dns servers for nmap, comma separated
   --min-rate <rate>, -mr <rate>
                         The min rate for nmap packets sent; default is 5000
+  --disable-fireabend-update-check, -dfuc
+                        Disable update checks for fireabend
+  --disable-nuclei-update-check, -dnuc
+                        Disable update checks for nuclei
   --check               Sanity check, print binary paths and defaults
-
 ````
 ## 🐍 Native Python
 
