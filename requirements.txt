@@ -7,6 +7,7 @@ asyncio
 pandas==2.2.2
 numpy==2.0.1
 bcrypt
+requests
 
 # packages for eyewitness
 selenium==4.7.0
