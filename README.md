@@ -86,7 +86,10 @@ rm -rf helpers/nuclei/nuclei-templates
 git pull
 ````
 
-Nuclei templates are automatically updated each time fireabend.py runs.
+> [!WARNING]
+> Nuclei templates are automatically updated each time fireabend.py runs. Requires an internet connection.
+>
+> However, this repo also provides a somewhat deprecated version of nuclei templates in case you are on a box with no internet access. In such a case, you can use the CLI flag `--disable-nuclei-update-checks` to prevent freezing and timeout warnings.
 
 ## 🔎 Methodology
 
