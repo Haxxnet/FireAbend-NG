@@ -86,12 +86,6 @@ rm -rf helpers/nuclei/nuclei-templates
 git pull
 ````
 
-If you feel brave, you can upgrade all helper submodules. This may brick functionality.
-
-```
-git submodule update --remote
-```
-
 Nuclei templates are automatically updated each time fireabend.py runs.
 
 ## 🔎 Methodology
