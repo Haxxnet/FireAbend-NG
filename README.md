@@ -69,7 +69,7 @@ pip3 install -r requirements.txt
 ### Running
 
 ````
-python3 dist/<your-python-version>/fireabend.py --targets targets.txt --nuclei-severity high,critical --dns-servers 1.1.1.1
+python3 dist/<your-python-version>/fireabend.py --targets targets.txt
 ````
 
 You will find your scan results in the `scans/` directory.
