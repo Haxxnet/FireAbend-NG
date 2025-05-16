@@ -17,4 +17,4 @@ pyvirtualdisplay
 netaddr
 
 # findings auditing
-ssh-audit==3.2.0
+ssh-audit==3.3.0
