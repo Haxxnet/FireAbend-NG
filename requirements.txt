@@ -4,13 +4,13 @@ termcolor
 openpyxl
 httpx
 asyncio
-pandas==2.2.3
-numpy==2.0.1
+pandas==2.3.3
+numpy==2.3.4
 bcrypt
 requests
 
 # packages for eyewitness
-selenium==4.7.0
+selenium==4.38.0
 fuzzywuzzy
 python-Levenshtein
 pyvirtualdisplay
