@@ -10,7 +10,7 @@ info:
     - https://dropbox.com
   metadata:
     max-request: 1
-  tags: phishing,dropbox,osint
+  tags: phishing,dropbox,osint,discovery
 http:
   - method: GET
     path:
@@ -32,4 +32,4 @@ http:
       - type: dsl
         dsl:
           - '!contains(host,"dropbox.com")'
-# digest: 490a00463044022001c29e080cb059f4ca4a9bac481043e4ea7ad03418ea607b3511f5277abd8df902207bea29cb126c48d9eec682dd48d9babf720e914f02c78cc2ecc520b735a165ed:922c64590222798bb761d5b6d8e72950
+# digest: 4a0a00473045022100febc6d75fd8dd2ee00b96b17f6da09c7c52e3e8135076d001638dd5ed5270051022062c228d94795e0743b9937693984fe22dfda837fdc1a98227e572108f3421869:922c64590222798bb761d5b6d8e72950

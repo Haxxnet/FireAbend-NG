@@ -10,7 +10,7 @@ info:
     - https://signal.org
   metadata:
     max-request: 1
-  tags: phishing,signal,osint
+  tags: phishing,signal,osint,discovery
 http:
   - method: GET
     path:
@@ -32,4 +32,4 @@ http:
       - type: dsl
         dsl:
           - '!contains(host,"signal.org")'
-# digest: 4a0a0047304502210083ac11375194fcaf6cd97b4a826f36f4d983b6f4a4c89e4f8829397f153fc94e02203f12b163f68c35114be2aacb7e5444afda79f798aa97393d6cb18df45c79b5c4:922c64590222798bb761d5b6d8e72950
+# digest: 490a0046304402207d365f6e278f207b64d35cae42894255e407bdb0a8cddadc7141755fb963639002204b8a8473ce87c2cac8d7ee938860af001fcba0ed6e1b3da2e20013afc9bc173e:922c64590222798bb761d5b6d8e72950

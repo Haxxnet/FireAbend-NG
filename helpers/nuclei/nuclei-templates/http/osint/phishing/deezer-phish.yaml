@@ -10,7 +10,7 @@ info:
     - https://deezer.com
   metadata:
     max-request: 1
-  tags: phishing,deezer,osint
+  tags: phishing,deezer,osint,discovery
 http:
   - method: GET
     path:
@@ -32,4 +32,4 @@ http:
       - type: dsl
         dsl:
           - '!contains(host,"deezer.com")'
-# digest: 490a0046304402202ab78ef1f14199edd10d28b703a5daf8b0f40b27e473c4b46b7fb56a29e7e66a022073ef938a268beeee580e1d9aa84c0b02c118630aee590c66eb19bc21eb1300f8:922c64590222798bb761d5b6d8e72950
+# digest: 4b0a00483046022100a6274a166b7a93fc7ed18b03f2ae3712856c4efb92ff7981cc9aa886caa4fa87022100bb24a53784d8de1d18f303b4d7fc0e17b6429ec9a232003e66a7265ae9021077:922c64590222798bb761d5b6d8e72950

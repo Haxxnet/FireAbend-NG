@@ -10,7 +10,7 @@ info:
     - https://quora.com
   metadata:
     max-request: 1
-  tags: phishing,quora,osint
+  tags: phishing,quora,osint,discovery
 http:
   - method: GET
     path:
@@ -32,4 +32,4 @@ http:
       - type: dsl
         dsl:
           - '!contains(host,"quora.com")'
-# digest: 4b0a00483046022100d0ed14b86e22947681b798f265ffc7636b7841a822d6c55213bdcd6c92750e27022100835eae630e9311a06266b497cc90d171fabf5ae795cd59bc574657add81997e7:922c64590222798bb761d5b6d8e72950
+# digest: 4b0a004830460221008a830c4ccb390ff51b9ea0a8600b16e692342df9b8b6c259aad847f0b88a557b022100dd8e41a57276d857455cf348b998ba2ed3e899eda5aed434e4b43201b808be96:922c64590222798bb761d5b6d8e72950

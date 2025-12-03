@@ -12,7 +12,7 @@ info:
   metadata:
     max-request: 1
     verified: true
-  tags: osint,osint-social,sessionize
+  tags: osint,osint-social,sessionize,discovery
 
 self-contained: true
 
@@ -34,4 +34,4 @@ http:
       - type: status
         status:
           - 200
-# digest: 4b0a004830460221008be7ac0c129574eab3ba99a17049fe08b25b731662fa65624d4414f9e675f750022100ce6c4bab15b570c48abdce674c259f8cbe61e8da0f9c41097f802f9f23546b94:922c64590222798bb761d5b6d8e72950
+# digest: 490a00463044022029cf75d6d143ac3837ef24441149134cc655076496905ae4d17e2fda2e0a903a0220026e9d64f85046015c509a52c5e04a3b5500d2d8270be4d14d123fc295febbe7:922c64590222798bb761d5b6d8e72950

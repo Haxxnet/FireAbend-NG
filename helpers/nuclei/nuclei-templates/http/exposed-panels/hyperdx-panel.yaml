@@ -13,7 +13,7 @@ info:
     max-request: 1
     verified: true
     shodan-query: html:"hyperdx"
-  tags: panel,hyperdx,detect
+  tags: panel,hyperdx,detect,discovery
 
 http:
   - method: GET
@@ -34,4 +34,4 @@ http:
         regex:
 
           - '(?i)"version":"([0-9.]+)"'
-# digest: 4b0a00483046022100ea5036e6c55b3fe7bf14ac27835e09bff61fe1c32c8416086c9c6efc45769e11022100e1a64401df9a13174f05fe3e0c44962a4415bf7886eeca08e79b22c4de57bfab:922c64590222798bb761d5b6d8e72950
+# digest: 490a004630440220606f076292c3d6a7763a92aa4813fe713362f71d9f6298ba91e0edb0e7cde58f02201bfac65291387eacfb193f728d83550c03ff557e82a622b417c2efbd8ee529c0:922c64590222798bb761d5b6d8e72950

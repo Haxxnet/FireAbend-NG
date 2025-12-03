@@ -13,7 +13,7 @@ info:
     verified: true
     max-request: 1
     shodan-query: http.favicon.hash:981081715
-  tags: panel,pocketbase,login,detect
+  tags: panel,pocketbase,login,detect,discovery
 
 http:
   - method: GET
@@ -31,4 +31,4 @@ http:
       - type: status
         status:
           - 200
-# digest: 4b0a00483046022100fdb709bdf970aa81152732ebfbfc01d851fe262365a93b96d5039a64d2e392da0221009db17f4507926aff964965e7473ca6908923f271c15c29b5e755eea1c972c8fe:922c64590222798bb761d5b6d8e72950
+# digest: 4b0a00483046022100e47b30ccdc89de308d55afd4a9f7bb0e1f66f93adcb094446c9fe0fc2ae645170221008a43c06a498392bed70e7c8dd8d007b8221e6e247a1fa1619cbc083332e4bf44:922c64590222798bb761d5b6d8e72950

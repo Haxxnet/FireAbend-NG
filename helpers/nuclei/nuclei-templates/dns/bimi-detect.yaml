@@ -10,7 +10,7 @@ info:
     - https://postmarkapp.com/blog/what-the-heck-is-bimi
   metadata:
     max-request: 1
-  tags: dns,bimi
+  tags: dns,bimi,discovery
 dns:
   - name: "{{FQDN}}"
     type: TXT
@@ -23,4 +23,4 @@ dns:
       - type: regex
         regex:
           - "v=BIMI1(.+)"
-# digest: 4a0a00473045022100e4d9c05c1396ac0c34336a9bb7b17f19ac3556e465b7904be87853adf2e9e7a502207c85579bbe7e3320884d8dea255fa0d72788e2a45d2a94a09c2d49510f78838b:922c64590222798bb761d5b6d8e72950
+# digest: 490a00463044022003e1f73fc04829063ce85ce4e8bcfa5b23af1bbc23fbb1403fafb1a651a3c3a4022054824c1b8bd3472601f619d04e7cbebe842eb2e722c202897ff0514162ebc702:922c64590222798bb761d5b6d8e72950

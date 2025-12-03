@@ -10,7 +10,7 @@ info:
     - https://steampowered.com
   metadata:
     max-request: 1
-  tags: phishing,steam,osint
+  tags: phishing,steam,osint,discovery
 http:
   - method: GET
     path:
@@ -35,4 +35,4 @@ http:
       - type: dsl
         dsl:
           - '!contains(host,"steampowered.com")'
-# digest: 4a0a0047304502206142713fb9eca9f4628e5a992e9c6239b821d0c0d69bb6f43c95713e369f780a022100d3856998c639c05ad446e54f7abbbf96ecd642079801ae2dcc558033a21fdcb8:922c64590222798bb761d5b6d8e72950
+# digest: 490a00463044022012515e78d0cde5e82bbde474bd95b2ed9a6c5c7e70eb0e6801b140d21c68351402200f63b1d0a6b03c9e684b0e05695118fca8be0d94232992570ab08908377f2aeb:922c64590222798bb761d5b6d8e72950

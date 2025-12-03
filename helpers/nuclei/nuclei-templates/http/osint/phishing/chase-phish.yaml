@@ -10,7 +10,7 @@ info:
     - https://chase.com
   metadata:
     max-request: 1
-  tags: phishing,Chase,osint
+  tags: phishing,Chase,osint,discovery
 http:
   - method: GET
     path:
@@ -32,4 +32,4 @@ http:
       - type: dsl
         dsl:
           - '!contains(host,"chase.com")'
-# digest: 490a0046304402202939fbe5845479957cd511a00ced83ac76892753c99139cba001d0838451f6ca02202dbb3dff4de3cfaec0d45d7dd116e0c24b44f4fb4feabef1bf959ca16ad9695d:922c64590222798bb761d5b6d8e72950
+# digest: 4b0a00483046022100dd3c886fca22e9ff50fc3a0e8bcbb2690e980921f8459cbdfa583e54b9c48606022100aefa0b3f0bc349bb6b2b4d06bf638c263a08862b2f8f48a789530cf776873963:922c64590222798bb761d5b6d8e72950

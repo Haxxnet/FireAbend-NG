@@ -12,7 +12,7 @@ info:
     verified: true
     max-request: 1
     shodan-query: http.title:"AdmiralCloud"
-  tags: tech,admiralcloud,detect
+  tags: tech,admiralcloud,detect,discovery
 
 http:
   - method: GET
@@ -34,4 +34,4 @@ http:
         group: 1
         regex:
           - '\s+([0-9\.]+)</title>'
-# digest: 4b0a00483046022100c79f6b7f55d75c83aa71e3394b3852b9cc4693e59c0f9e14d05742100b782667022100fa8e731f2085a3b3d02ea17023b970c953c46e468ce0d49f8183b8d989da4db2:922c64590222798bb761d5b6d8e72950
+# digest: 4a0a00473045022029b64989795296d03eb16fef98d159c10099ce8991df6c54ecdd7b936da9b3bc0221009b006c9d08941779a6b9ee7e2b3df4f605bab9929e87c8f37b472d2611ad8430:922c64590222798bb761d5b6d8e72950
