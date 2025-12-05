@@ -101,11 +101,13 @@ git pull
 6. Pass enumerated tcp ports into advanced nmap scan. Version detection and nse scripts enabled.
 7. Extract open ports and probe for http/s urls via httpx.
 8. Convert tcp nmap xml output file to convenient html report.
-9. Run shcheck to enumerate http response headers by passing in the extracted http/s urls from nmap file.
-10. Convert shcheck json output files into convenient xlsx report.
-11. Run eyewitness against the extracted http/s urls from detailed nmap portscan results. Save html report with screenshots as output.
-12. Run testssl.sh for auditing ssl/tls configuration by passing in the detailed nmap results file. Covers TLS + STARTTLS services.
-13. Run testssl.sh for auditing ssl/tls configuration by passing in the extracted https urls from nmap file. Covers VHOSTs.
-14. Convert all testssl.sh json output files to colorized xlsx report.
-15. Update and run nuclei vulnerability scanner against extracted http/s urls. Save identified vulnerabilites into txt outfile.
-16. Run ssh-audit against identified SSH network services. Convert JSON results to colorized xlsx report.
+9. Parse nmap xml to create standard findings (product versions, header version disclosure, ssh password auth etc.)
+10. Run shcheck to enumerate http response headers by passing in the extracted http/s urls from nmap file.
+11. Convert shcheck json output files into convenient xlsx report.
+12. Run eyewitness against the extracted http/s urls from detailed nmap portscan results. Save html report with screenshots as output.
+13. Run testssl.sh for auditing ssl/tls configuration by passing in the detailed nmap results file. Covers TLS + STARTTLS services.
+14. Run testssl.sh for auditing ssl/tls configuration by passing in the extracted https urls from nmap file. Covers VHOSTs.
+15. Convert all testssl.sh json output files to colorized xlsx report.
+16. Update and run nuclei vulnerability scanner against extracted http/s urls. Save identified vulnerabilites into txt outfile.
+17. Run ssh-audit against identified SSH network services. Convert JSON results to colorized xlsx report.
+18. Run ikess.py against identified IKE-VPN network services.
