@@ -16,3 +16,6 @@
 [submodule "helpers/ssh-audit-excel"]
 	path = helpers/ssh-audit-excel
 	url = https://github.com/l4rm4nd/ssh-audit-excel
+[submodule "helpers/IKESS"]
+	path = helpers/IKESS
+	url = https://github.com/l4rm4nd/IKESS

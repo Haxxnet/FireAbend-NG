@@ -7,3 +7,4 @@ geckodriver.log
 package.json
 CHANGELOG.md
 **/.github/**
+/tools/nuclei/nuclei
