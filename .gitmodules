@@ -13,9 +13,6 @@
 [submodule "helpers/testssl.sh"]
 	path = helpers/testssl.sh
 	url = https://github.com/drwetter/testssl.sh
-[submodule "helpers/nuclei/nuclei-templates"]
-	path = helpers/nuclei/nuclei-templates
-	url = https://github.com/projectdiscovery/nuclei-templates
 [submodule "helpers/ssh-audit-excel"]
 	path = helpers/ssh-audit-excel
 	url = https://github.com/l4rm4nd/ssh-audit-excel
