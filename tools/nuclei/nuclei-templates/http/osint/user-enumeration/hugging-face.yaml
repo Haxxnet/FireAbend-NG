@@ -1,0 +1,33 @@
+id: hugging-face
+
+info:
+  name: Hugging face User Name Information - Detect
+  author: dwisiswant0
+  severity: info
+  description: Hugging face user name information check was conducted.
+  classification:
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N
+    cvss-score: 0
+    cwe-id: CWE-200
+  metadata:
+    max-request: 1
+  tags: osint,osint-tech,hugging-face,discovery
+
+self-contained: true
+
+http:
+  - method: GET
+    path:
+      - "https://huggingface.co/{{user}}"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        part: body
+        words:
+          - "thumbnails.huggingface.co/social-thumbnails/"
+# digest: 4b0a004830460221008993339e17324db3c033a7c0dba088ce3269b8b40e176d079dc221692696e578022100948edb9da2ef368293e00535ba8692274924cad12080a0b42e64e523467e7a6c:922c64590222798bb761d5b6d8e72950
