@@ -26,8 +26,6 @@ FireAbend automates various pentesting tasks such as:
 
 ## 🎓 Usage
 
-## 🎓 Usage
-
 ````bash
 usage: fireabend.py [-h] [--target <host> | --targets <file>]
                     [--nmap-custom-flags-stage1 <nmap-cli-flags>]
