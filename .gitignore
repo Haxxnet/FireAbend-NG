@@ -2,7 +2,10 @@
 *.log
 /targets.txt
 targets.txt
+__pycache__/
+*.py[cod]
 /scans/**
+.env
 geckodriver.log
 package.json
 CHANGELOG.md
