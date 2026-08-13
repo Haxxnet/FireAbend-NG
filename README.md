@@ -10,10 +10,6 @@
 
 FireAbend automates various pentesting tasks such as:
 
-- dependency-aware job scheduling with resource-aware queuing
-- resumable scans via `--resume` using persisted job state from `00_runtime/`
-- local live dashboard for current scan jobs, logs, findings, and artifacts
-- dashboard-only mode for browsing existing scan directories
 - nmap port scanning (tcp + udp)
 - ssl/tls auditing of starttls and tls (https) services
 - http response header analysis of http(s) services
@@ -23,6 +19,13 @@ FireAbend automates various pentesting tasks such as:
 - nuclei vulnerability scanning
 - converting various output formats to customer friendly result files (html, xlsx, csv, etc.)
 - maintaining a strict methodology with less risk of human failure
+
+With support for:
+
+- dependency-aware job scheduling with resource-aware queuing
+- resumable scans via `--resume` using persisted job state
+- local live dashboard for current scan jobs, logs, findings, and artifacts
+- dashboard-only mode for browsing existing scan directories
 
 ## 🎓 Usage
 
