@@ -132,6 +132,8 @@ For the FireAbend password gate, the script now checks in this order:
 - `FIREABEND_PASSWORD` from a local `.env`
 - interactive password prompt
 
+If pending nmap jobs require elevated privileges and you are not already running as root, FireAbend prompts once for sudo before the scheduler starts and keeps that sudo timestamp refreshed for the nmap stages.
+
 Example `.env`:
 
 ```bash
