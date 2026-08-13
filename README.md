@@ -10,43 +10,90 @@
 
 FireAbend automates various pentesting tasks such as:
 
+- dependency-aware job scheduling with resource-aware queuing
+- resumable scans via `--resume` using persisted job state from `00_runtime/`
+- local live dashboard for current scan jobs, logs, findings, and artifacts
+- dashboard-only mode for browsing existing scan directories
 - nmap port scanning (tcp + udp)
 - ssl/tls auditing of starttls and tls (https) services
 - http response header analysis of http(s) services
+- lightweight OWASP ZAP baseline scanning of discovered http(s) services
 - SSH auditing via ssh-audit
+- IKE/VPN auditing via IKESS
 - nuclei vulnerability scanning
 - converting various output formats to customer friendly result files (html, xlsx, csv, etc.)
 - maintaining a strict methodology with less risk of human failure
 
 ## 🎓 Usage
 
+## 🎓 Usage
+
 ````bash
-usage: fireabend.py [-h] --targets <file> [--nmap-custom-flags-stage1 <nmap-cli-flags>]
+usage: fireabend.py [-h] [--target <host> | --targets <file>]
+                    [--nmap-custom-flags-stage1 <nmap-cli-flags>]
                     [--nmap-custom-flags-stage2 <nmap-cli-flags>]
                     [--nuclei-severity <info,low,medium,high,critical,unknown>]
-                    [--min-rate <rate>]
-                    [--dns-servers <server1>[,<server2>]] [--check]
+                    [--dns-servers <server1>[,<server2>]]
+                    [--additional-http-urls <file>] [--min-rate <rate>]
+                    [--disable-fireabend-update-check]
+                    [--disable-nuclei-template-update-check]
+                    [--enable-nuclei-engine-update-check] [--dashboard]
+                    [--no-dashboard] [--resume <scan-dir>] [--disable-udp]
+                    [--disable-zap] [--disable-zap-image-check-pull]
+                    [--zap-spider-minutes <mins>]
+                    [--zap-passive-wait-seconds <secs>]
+                    [--zap-max-minutes <mins>] [--check]
 
 options:
   -h, --help            show this help message and exit
-  --targets <file>, -t <file>
-                        Newline separated file with hostnames (recommended) or ip addresses
-  --nmap-custom-flags-stage1 <nmap-cli-flags>, -n1 <nmap-cli-flags>
+  --target <host>       Single hostname or ip address
+  --targets, -t <file>  Newline separated file with hostnames (recommended) or
+                        ip addresses
+  --nmap-custom-flags-stage1, -n1 <nmap-cli-flags>
                         Custom nmap cli flags for stage 1
-  --nmap-custom-flags-stage2 <nmap-cli-flags>, -n2 <nmap-cli-flags>
+  --nmap-custom-flags-stage2, -n2 <nmap-cli-flags>
                         Custom nmap cli flags for stage 2
-  --nuclei-severity <info,low,medium,high,critical,unknown>, -ns <info,low,medium,high,critical,unknown>
-                        Nuclei severity filters, comma separated; default is low,medium,high,critical
-  --dns-servers <server1>[,<server2>], -dns <server1>[,<server2>]
+  --nuclei-severity, -ns <info,low,medium,high,critical,unknown>
+                        Nuclei severity filters, comma separated; default is
+                        medium,high,critical
+  --dns-servers, -dns <server1>[,<server2>]
                         Custom dns servers for nmap, comma separated
-  --min-rate <rate>, -mr <rate>
+  --additional-http-urls, --additional-urls, -au <file>
+                        Newline separated file with additional http(s) urls to
+                        append to stage2_http_urls.txt
+  --min-rate, -mr <rate>
                         The min rate for nmap packets sent; default is 5000
   --disable-fireabend-update-check, -dfuc
                         Disable update checks for fireabend
-  --disable-nuclei-update-check, -dnuc
-                        Disable update checks for nuclei
+  --disable-nuclei-template-update-check, -dntuc
+                        Disable updating nuclei templates
+  --enable-nuclei-engine-update-check, -eneuc
+                        Enable updating nuclei scan engine
+  --dashboard           Start a local dashboard server for the current scan
+                        and open it in the browser (default)
+  --no-dashboard        Do not start the local dashboard server automatically
+  --resume, --resume-scan-dir <scan-dir>
+                        Resume an existing FireAbend scan directory and rerun
+                        unfinished jobs
+  --disable-udp, -dudp  Disable nmap udp scanning
+  --disable-zap, -dzap  Disable OWASP ZAP baseline scanning of discovered
+                        http(s) urls
+  --disable-zap-image-check-pull
+                        Do not inspect or pull the OWASP ZAP Docker image
+                        before scanning; useful for offline runs
+  --zap-spider-minutes, -zsm <mins>
+                        OWASP ZAP spider duration per URL in minutes; default
+                        is 1
+  --zap-passive-wait-seconds, -zpws <secs>
+                        OWASP ZAP passive scan wait time per URL in seconds;
+                        default is 5
+  --zap-max-minutes, -zmm <mins>
+                        Maximum minutes to wait for each OWASP ZAP scan;
+                        default is 3
   --check               Sanity check, print binary paths and defaults
+
 ````
+
 ## 🐍 Native Python
 
 ### Installation
@@ -56,7 +103,7 @@ options:
 git clone https://github.com/Haxxnet/FireAbend-NG && cd FireAbend-NG
 
 # install helper tools - Kali Linux recommended
-sudo apt install xsltproc nmap eyewitness
+sudo apt install xsltproc nmap eyewitness docker.io
 
 # create python virtual environment
 virtualenv venv
@@ -73,6 +120,43 @@ python3 dist/<your-python-version>/fireabend.py --targets targets.txt
 ````
 
 You will find your scan results in the `scans/` directory.
+
+---
+
+Since `v2`, FireAbend executes work as dependency-aware jobs instead of a single linear shell flow. Jobs are queued with lightweight resource limits, persist their state and logs under `00_runtime/`, and can be resumed with `--resume` after interruption or failure.
+
+For the FireAbend password gate, the script now checks in this order:
+
+- `FIREABEND_PASSWORD` from the current process environment
+- `FIREABEND_PASSWORD` from a local `.env`
+- interactive password prompt
+
+Example `.env`:
+
+```bash
+FIREABEND_PASSWORD=your-password-here
+```
+
+---
+
+FireAbend writes orchestration metadata to `00_runtime/`, including:
+
+- per-job logs
+- per-job status JSON
+- job manifest JSON
+- overall run summary JSON
+
+The CLI also prints a regular scheduler heartbeat showing running, pending, completed, failed, and skipped jobs so long-running scans are easier to follow.
+
+If `--dashboard` is enabled (default), FireAbend starts a detached local web server for the active scan, opens it in your browser, and serves:
+
+- live job state from `00_runtime/jobs/`
+- per-job logs from `00_runtime/logs/`
+- findings and reports from the scan directory
+
+If you run `python3 dist/<your-python-version>/fireabend.py --dashboard` without `--target` or `--targets`, FireAbend enters dashboard-only mode and prompts you to choose an existing scan directory from `scans/`.
+
+You may use `--resume <path-to-scan-dir>` to resume a failed or aborted scan. Jobs in the status `failed` or `pending` are then re-run and produce new (override mode) output files and logs. Already `completed` jobs are ignored and stay untouched.
 
 ### Updating
 
@@ -93,21 +177,11 @@ git pull
 
 ## 🔎 Methodology
 
-1. Run basic nmap scan to enumerate top-500 open udp ports. No version detection, no nse script scans.
-2. Convert udp nmap xml output file into convenient html report.
-3. Run fullrange nmap scan to enumerate open tcp ports. No version detection, no nse script scans.
-4. Extract open ports and probe for http/s urls via httpx.
-5. Convert tcp nmap xml output file to convenient html report.
-6. Pass enumerated tcp ports into advanced nmap scan. Version detection and nse scripts enabled.
-7. Extract open ports and probe for http/s urls via httpx.
-8. Convert tcp nmap xml output file to convenient html report.
-9. Parse nmap xml to create standard findings (product versions, header version disclosure, ssh password auth etc.)
-10. Run shcheck to enumerate http response headers by passing in the extracted http/s urls from nmap file.
-11. Convert shcheck json output files into convenient xlsx report.
-12. Run eyewitness against the extracted http/s urls from detailed nmap portscan results. Save html report with screenshots as output.
-13. Run testssl.sh for auditing ssl/tls configuration by passing in the detailed nmap results file. Covers TLS + STARTTLS services.
-14. Run testssl.sh for auditing ssl/tls configuration by passing in the extracted https urls from nmap file. Covers VHOSTs.
-15. Convert all testssl.sh json output files to colorized xlsx report.
-16. Update and run nuclei vulnerability scanner against extracted http/s urls. Save identified vulnerabilites into txt outfile.
-17. Run ssh-audit against identified SSH network services. Convert JSON results to colorized xlsx report.
-18. Run ikess.py against identified IKE-VPN network services.
+Since `v2`, the methodology still follows three phases, but each phase is executed as dependency-aware jobs with queueing, persisted state, and resume support.
+
+1. Discover
+   - Resolve a single `--target` or a `--targets` file into a runtime target list, run TCP and optional UDP stage-1 discovery, and normalize the first inventory artifacts as soon as upstream scan files exist.
+3. Enumerate
+   - Run TCP stage-2 version detection and NSE work, extract and probe discovered HTTP(S) URLs, append any operator-supplied additional URLs, and build service inventories for the downstream web, SSH, VPN, and reporting jobs.
+4. Analyze And Report
+   - Fan out the web workflow across header checks, EyeWitness, nuclei, OWASP ZAP, and URL-based testssl; fan out the service workflow across SSH and IKE/VPN auditing; then convert and publish artifacts while recording per-job logs and statuses so interrupted runs can be resumed and failed dependencies can skip downstream jobs cleanly.
