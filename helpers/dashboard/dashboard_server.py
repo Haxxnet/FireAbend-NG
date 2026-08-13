@@ -72,6 +72,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Serve a local FireAbend scan dashboard.")
     parser.add_argument("--scan-dir", required=True, help="Path to the FireAbend scan directory.")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind.")
+    parser.add_argument("--browser-host", default=None, help="Host to use for the printed/opened browser URL. Defaults to the bind host.")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind.")
     parser.add_argument("--open-browser", action="store_true", help="Open the dashboard in the default browser after startup.")
     return parser.parse_args()
@@ -1201,10 +1202,14 @@ def main():
     handler = build_handler(scan_dir)
     server = ThreadingHTTPServer((args.host, args.port), handler)
     dashboard_url = f"http://{args.host}:{args.port}/"
+    browser_host = args.browser_host or args.host
+    browser_url = f"http://{browser_host}:{args.port}/"
     print(f"[dashboard] serving {scan_dir} at {dashboard_url}", flush=True)
+    if browser_url != dashboard_url:
+        print(f"[dashboard] opening browser at {browser_url}", flush=True)
 
     if args.open_browser:
-        threading.Timer(0.8, lambda: webbrowser.open_new_tab(dashboard_url)).start()
+        threading.Timer(0.8, lambda: webbrowser.open_new_tab(browser_url)).start()
 
     try:
         server.serve_forever()
