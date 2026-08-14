@@ -66,6 +66,7 @@ def resolve_dashboard_assets():
 
 
 DASHBOARD_ASSETS = resolve_dashboard_assets()
+DEFAULT_DASHBOARD_PORT = 42420
 
 
 def parse_args():
@@ -73,7 +74,7 @@ def parse_args():
     parser.add_argument("--scan-dir", required=True, help="Path to the FireAbend scan directory.")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind.")
     parser.add_argument("--browser-host", default=None, help="Host to use for the printed/opened browser URL. Defaults to the bind host.")
-    parser.add_argument("--port", type=int, default=8765, help="Port to bind.")
+    parser.add_argument("--port", type=int, default=DEFAULT_DASHBOARD_PORT, help="Port to bind.")
     parser.add_argument("--open-browser", action="store_true", help="Open the dashboard in the default browser after startup.")
     return parser.parse_args()
 
@@ -450,11 +451,63 @@ def render_index():
       .jobs-table td {{
         overflow-wrap: anywhere;
       }}
-      .metric {{
-        min-height: 120px;
+      .jobs-table-wrap {{
+        overflow-x: auto;
       }}
-      .metric .display-6 {{
+      .metric {{
+        min-height: 96px;
+        padding: 0.9rem !important;
+      }}
+      .metric-header {{
+        margin-bottom: 0.5rem;
+      }}
+      .metric-label {{
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        line-height: 1.1;
+      }}
+      .metric-value {{
+        font-size: clamp(1.45rem, 2.8vw, 1.9rem);
         font-weight: 700;
+        line-height: 1.05;
+      }}
+      .metric-icon {{
+        font-size: 1.15rem;
+      }}
+      .metric-caption {{
+        font-size: 0.78rem;
+      }}
+      @media (max-width: 991.98px) {{
+        .metric {{
+          min-height: 72px;
+          padding: 0.7rem !important;
+          border-radius: 1.2rem !important;
+        }}
+        .metric-header {{
+          margin-bottom: 0.35rem;
+        }}
+        .metric-label {{
+          font-size: 0.66rem;
+          letter-spacing: 0.07em;
+        }}
+        .metric-value {{
+          font-size: 1.35rem;
+        }}
+        .metric-icon {{
+          font-size: 0.98rem;
+        }}
+        .metric-caption {{
+          display: none;
+        }}
+      }}
+      @media (max-width: 767.98px) {{
+        .metric {{
+          min-height: 64px;
+          padding: 0.6rem !important;
+        }}
+        .metric-value {{
+          font-size: 1.18rem;
+        }}
       }}
       .job-row {{
         cursor: pointer;
@@ -601,6 +654,69 @@ def render_index():
       .pulse {{
         animation: pulse 1.8s ease-in-out infinite;
       }}
+      @media (max-width: 767.98px) {{
+        .job-search {{
+          max-width: none;
+          width: 100%;
+        }}
+        .jobs-footer {{
+          flex-direction: column;
+          align-items: stretch !important;
+          gap: 0.85rem;
+        }}
+        .jobs-footer .btn-group {{
+          width: 100%;
+        }}
+        .jobs-footer .btn-group > .btn {{
+          flex: 1 1 0;
+        }}
+        .jobs-table-wrap {{
+          overflow: visible;
+        }}
+        .jobs-table,
+        .jobs-table tbody,
+        .jobs-table tr,
+        .jobs-table td {{
+          display: block;
+          width: 100%;
+        }}
+        .jobs-table thead {{
+          display: none;
+        }}
+        .jobs-table tbody {{
+          display: grid;
+          gap: 0.9rem;
+        }}
+        .jobs-table .job-row {{
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          border-radius: 1rem;
+          overflow: hidden;
+          background: rgba(15, 23, 42, 0.56);
+          box-shadow: 0 14px 30px rgba(2, 6, 23, 0.16);
+        }}
+        .jobs-table td {{
+          display: grid;
+          grid-template-columns: minmax(5.75rem, 7rem) minmax(0, 1fr);
+          gap: 0.75rem;
+          align-items: start;
+          padding: 0.75rem 0.9rem;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        }}
+        .jobs-table td:last-child {{
+          border-bottom: 0;
+        }}
+        .jobs-table td::before {{
+          content: attr(data-label);
+          color: var(--fa-muted);
+          font-size: 0.74rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }}
+        .jobs-table td > * {{
+          min-width: 0;
+        }}
+      }}
       @keyframes pulse {{
         0% {{ opacity: 0.65; transform: scale(0.98); }}
         50% {{ opacity: 1; transform: scale(1); }}
@@ -658,7 +774,7 @@ def render_index():
           <input class="form-control form-control-sm job-search" id="jobsSearchInput" type="search" placeholder="Search jobs, resources, status, details...">
           <div id="jobsSearchSummary" class="small-muted"></div>
         </div>
-        <div class="table-responsive">
+        <div class="table-responsive jobs-table-wrap">
           <table class="table jobs-table align-middle mb-0">
             <thead>
               <tr>
@@ -692,7 +808,7 @@ def render_index():
             <tbody id="jobsTable"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center pt-3">
+        <div class="d-flex justify-content-between align-items-center pt-3 jobs-footer">
           <div id="jobsPaginationSummary" class="pagination-summary"></div>
           <div class="btn-group" role="group" aria-label="Job pagination">
             <button class="btn btn-sm btn-outline-secondary" id="jobsPrevButton" type="button">
@@ -770,14 +886,14 @@ def render_index():
         ];
 
         document.getElementById("metrics").innerHTML = metrics.map(([label, value, icon, tone]) => `
-          <div class="col-sm-6 col-xl">
-            <div class="glass rounded-5 p-3 p-lg-4 metric h-100">
-              <div class="d-flex justify-content-between align-items-start mb-3">
-                <div class="small text-uppercase fw-semibold text-${{tone}}">${{label}}</div>
-                <i class="bi ${{icon}} fs-4 text-${{tone}}"></i>
+          <div class="col-6 col-md-4 col-xl">
+            <div class="glass rounded-5 p-3 metric h-100">
+              <div class="d-flex justify-content-between align-items-start metric-header">
+                <div class="metric-label text-uppercase fw-semibold text-${{tone}}">${{label}}</div>
+                <i class="bi ${{icon}} metric-icon text-${{tone}}"></i>
               </div>
-              <div class="display-6 mb-1">${{value}}</div>
-              <div class="small-muted">Current job count</div>
+              <div class="metric-value mb-1">${{value}}</div>
+              <div class="small-muted metric-caption">Current job count</div>
             </div>
           </div>
         `).join("");
@@ -899,17 +1015,17 @@ def render_index():
           const detail = getJobDetail(job);
           return `
             <tr class="job-row" data-job-id="${{escapeHtml(job.job_id)}}">
-              <td>
+              <td data-label="Job">
                 <div class="fw-semibold">${{escapeHtml(job.job_id)}}</div>
                 <div class="small-muted">${{escapeHtml(job.description)}}</div>
               </td>
-              <td><span class="badge badge-state ${{badge}}">${{escapeHtml(job.state)}}</span></td>
-              <td><span class="small text-uppercase fw-semibold">${{escapeHtml(job.resource || "-")}}</span></td>
-              <td>
+              <td data-label="Status"><span class="badge badge-state ${{badge}}">${{escapeHtml(job.state)}}</span></td>
+              <td data-label="Resource"><span class="small text-uppercase fw-semibold">${{escapeHtml(job.resource || "-")}}</span></td>
+              <td data-label="Timing">
                 <div class="small">${{escapeHtml(job.started_at || "not started")}}</div>
                 <div class="small text-body-secondary">${{escapeHtml(job.finished_at || job.updated_at || "")}}</div>
               </td>
-              <td class="small">${{escapeHtml(detail)}}</td>
+              <td class="small" data-label="Details">${{escapeHtml(detail)}}</td>
             </tr>
           `;
         }}).join("");
