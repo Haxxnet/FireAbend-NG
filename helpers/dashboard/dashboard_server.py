@@ -1634,6 +1634,7 @@ def render_nuclei_viewer():
     <script src="__BOOTSTRAP_JS_SRC__"__BOOTSTRAP_JS_INTEGRITY__></script>
     <script>
       const severityOrder = ["critical", "high", "medium", "low", "info", "unknown"];
+      const viewerRefreshIntervalMs = 4000;
       const severityColors = {
         critical: "var(--nv-critical)",
         high: "var(--nv-high)",
@@ -1650,6 +1651,8 @@ def render_nuclei_viewer():
       let activeJsonArtifactPath = "";
       let activeRawArtifactPath = "";
       let availableNucleiFiles = [];
+      let lastResultsSignature = "";
+      let viewerRefreshTimer = null;
       let currentSortKey = "severity";
       let currentSortDirection = "asc";
       const selectedSeverities = new Set(severityOrder);
@@ -1962,10 +1965,26 @@ def render_nuclei_viewer():
             if (!candidate) {
               continue;
             }
-            rows.push(JSON.parse(candidate));
+            try {
+              rows.push(JSON.parse(candidate));
+            } catch (lineError) {
+              // Ignore partially-written trailing lines while nuclei is streaming.
+            }
           }
           return rows;
         }
+      }
+
+      function buildResultsSignature(results) {
+        return results.map((result) => [
+          result._template || "",
+          result._host || "",
+          result._ip || "",
+          result._port || "",
+          result._severity || "",
+          result._matchedAt || "",
+          result.timestamp || ""
+        ].join("|")).join("\\n");
       }
 
       function hydrateResult(result, index) {
@@ -2454,6 +2473,81 @@ def render_nuclei_viewer():
         applyFilters();
       }
 
+      function updateViewerArtifactLinks() {
+        document.getElementById("viewerArtifactName").textContent = activeArtifactPath ? activeArtifactPath.split("/").pop() : "No nuclei artifact found";
+        document.getElementById("viewerArtifactPath").textContent = activeArtifactPath || "No artifact path available";
+        document.getElementById("openJsonArtifact").href = activeJsonArtifactPath ? `/files/${encodeURIComponent(activeJsonArtifactPath)}` : "#";
+        document.getElementById("openJsonArtifact").classList.toggle("disabled", !activeJsonArtifactPath);
+        document.getElementById("openRawArtifact").href = activeRawArtifactPath ? `/files/${encodeURIComponent(activeRawArtifactPath)}` : "#";
+        document.getElementById("openRawArtifact").classList.toggle("disabled", !activeRawArtifactPath);
+      }
+
+      function renderWaitingForResultsState() {
+        renderMetrics([]);
+        renderSidebarFilters();
+        renderDetail(null);
+        document.getElementById("viewerStatus").textContent = "Waiting for nuclei JSON artifact to appear...";
+        document.getElementById("resultsTableBody").innerHTML = `
+          <tr>
+            <td colspan="7" class="py-5">
+              <div class="empty-state">
+                <div>
+                  <div class="fs-1 mb-3 text-warning"><i class="bi bi-braces-asterisk"></i></div>
+                  <h3 class="h5">Waiting for streamed nuclei results</h3>
+                  <p class="small-muted mb-0">This viewer polls automatically and will populate as soon as nuclei starts writing JSON findings.</p>
+                </div>
+              </div>
+            </td>
+          </tr>
+        `;
+        document.getElementById("resultSummary").textContent = "Waiting for streamed nuclei results";
+      }
+
+      async function refreshViewerData() {
+        const requestedArtifact = getQueryParam("artifact");
+        const state = await fetchState();
+        availableNucleiFiles = (state.sections || [])
+          .flatMap((section) => section.files || [])
+          .map((file) => file.relative_path)
+          .filter((path) => String(path || "").toLowerCase().includes("/nuclei/"));
+
+        const resolved = resolveArtifactPaths(requestedArtifact || activeArtifactPath);
+        activeArtifactPath = resolved.artifactPath;
+        activeJsonArtifactPath = resolved.jsonArtifactPath;
+        activeRawArtifactPath = resolved.rawArtifactPath;
+        updateViewerArtifactLinks();
+
+        if (!activeJsonArtifactPath) {
+          allResults = [];
+          lastResultsSignature = "";
+          renderWaitingForResultsState();
+          return;
+        }
+
+        const rawText = await fetchArtifactText(activeJsonArtifactPath);
+        const nextResults = parseNucleiResults(rawText).map(hydrateResult);
+        const nextSignature = buildResultsSignature(nextResults);
+
+        document.getElementById("viewerStatus").textContent = "Live view active. Refreshing streamed nuclei findings every 4 seconds.";
+
+        if (nextSignature === lastResultsSignature) {
+          return;
+        }
+
+        const firstSuccessfulLoad = lastResultsSignature === "";
+        allResults = nextResults;
+        lastResultsSignature = nextSignature;
+
+        if (firstSuccessfulLoad) {
+          resetSeverityFiltersToAvailable();
+        }
+
+        renderMetrics(allResults);
+        renderTypeFilter(allResults);
+        renderSidebarFilters();
+        applyFilters();
+      }
+
       function wireFilterControls() {
         document.getElementById("searchInput").addEventListener("input", applyFilters);
         document.getElementById("typeFilter").addEventListener("change", applyFilters);
@@ -2475,57 +2569,12 @@ def render_nuclei_viewer():
 
       async function bootstrapViewer() {
         wireFilterControls();
-
-        const requestedArtifact = getQueryParam("artifact");
-        const state = await fetchState();
-        availableNucleiFiles = (state.sections || [])
-          .flatMap((section) => section.files || [])
-          .map((file) => file.relative_path)
-          .filter((path) => String(path || "").toLowerCase().includes("/nuclei/"));
-
-        const resolved = resolveArtifactPaths(requestedArtifact);
-        activeArtifactPath = resolved.artifactPath;
-        activeJsonArtifactPath = resolved.jsonArtifactPath;
-        activeRawArtifactPath = resolved.rawArtifactPath;
-
-        document.getElementById("viewerArtifactName").textContent = activeArtifactPath ? activeArtifactPath.split("/").pop() : "No nuclei artifact found";
-        document.getElementById("viewerArtifactPath").textContent = activeArtifactPath || "No artifact path available";
-        document.getElementById("viewerStatus").textContent = activeJsonArtifactPath
-          ? "Rendering nuclei findings from the generated JSON artifact."
-          : "No nuclei JSON artifact was found for this scan yet.";
-        document.getElementById("openJsonArtifact").href = activeJsonArtifactPath ? `/files/${encodeURIComponent(activeJsonArtifactPath)}` : "#";
-        document.getElementById("openJsonArtifact").classList.toggle("disabled", !activeJsonArtifactPath);
-        document.getElementById("openRawArtifact").href = activeRawArtifactPath ? `/files/${encodeURIComponent(activeRawArtifactPath)}` : "#";
-        document.getElementById("openRawArtifact").classList.toggle("disabled", !activeRawArtifactPath);
-
-        if (!activeJsonArtifactPath) {
-          renderMetrics([]);
-          renderSidebarFilters();
-          renderDetail(null);
-          document.getElementById("resultsTableBody").innerHTML = `
-            <tr>
-              <td colspan="7" class="py-5">
-                <div class="empty-state">
-                  <div>
-                    <div class="fs-1 mb-3 text-warning"><i class="bi bi-braces-asterisk"></i></div>
-                    <h3 class="h5">No JSON nuclei artifact available</h3>
-                    <p class="small-muted mb-0">Run the updated nuclei job, then reopen this viewer to browse findings in the new table layout.</p>
-                  </div>
-                </div>
-              </td>
-            </tr>
-          `;
-          document.getElementById("resultSummary").textContent = "No JSON artifact available";
-          return;
-        }
-
-        const rawText = await fetchArtifactText(activeJsonArtifactPath);
-        allResults = parseNucleiResults(rawText).map(hydrateResult);
-        resetSeverityFiltersToAvailable();
-        renderMetrics(allResults);
-        renderTypeFilter(allResults);
-        renderSidebarFilters();
-        applyFilters();
+        await refreshViewerData();
+        viewerRefreshTimer = window.setInterval(() => {
+          refreshViewerData().catch((error) => {
+            document.getElementById("viewerStatus").textContent = error.message || "Unable to refresh nuclei viewer.";
+          });
+        }, viewerRefreshIntervalMs);
       }
 
       bootstrapViewer().catch((error) => {
