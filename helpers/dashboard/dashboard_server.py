@@ -1880,7 +1880,9 @@ def render_nuclei_viewer():
         const fallbackJson = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".jsonl"))
           || availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".json"))
           || "";
-        const fallbackRaw = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".txt")) || "";
+        const fallbackRaw = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".jsonl"))
+          || availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".json"))
+          || "";
 
         let jsonArtifact = "";
         for (const candidate of buildCandidatePaths(requested)) {
@@ -1898,18 +1900,12 @@ def render_nuclei_viewer():
         }
 
         let rawArtifact = "";
-        if (lower.endsWith(".txt") && availableNucleiFiles.includes(requested)) {
+        if ((lower.endsWith(".jsonl") || lower.endsWith(".json") || lower.endsWith(".txt")) && availableNucleiFiles.includes(requested)) {
           rawArtifact = requested;
         } else if (jsonArtifact) {
           const jsonLower = jsonArtifact.toLowerCase();
-          if (jsonLower.endsWith(".jsonl")) {
-            const candidate = jsonArtifact.slice(0, -6) + ".txt";
-            if (availableNucleiFiles.includes(candidate)) {
-              rawArtifact = candidate;
-            }
-          }
-          if (!rawArtifact && jsonLower.endsWith(".json")) {
-            const candidate = jsonArtifact.slice(0, -5) + ".txt";
+          if (jsonLower.endsWith(".json")) {
+            const candidate = jsonArtifact.slice(0, -5) + ".jsonl";
             if (availableNucleiFiles.includes(candidate)) {
               rawArtifact = candidate;
             }
