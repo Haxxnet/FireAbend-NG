@@ -271,7 +271,7 @@ def collect_findings_files(scan_dir):
         preferred_nuclei_path = next(
             (
                 path
-                for suffix in (".json", ".jsonl", ".txt")
+                for suffix in (".jsonl", ".json", ".txt")
                 for path in nuclei_candidates
                 if path.lower().endswith(suffix)
             ),
@@ -1089,7 +1089,7 @@ def render_index():
         function buildArtifactHref(file) {{
           const path = String(file.relative_path || "");
           if (path.toLowerCase().includes("/nuclei/")) {{
-            return `/nuclei-viewer?artifact=${{encodeURIComponent(path)}}`;
+            return "/nuclei-viewer";
           }}
           return file.url;
         }}
@@ -1877,8 +1877,8 @@ def render_nuclei_viewer():
       function resolveArtifactPaths(requestedArtifact) {
         const requested = String(requestedArtifact || "");
         const lower = requested.toLowerCase();
-        const fallbackJson = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".json"))
-          || availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".jsonl"))
+        const fallbackJson = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".jsonl"))
+          || availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".json"))
           || "";
         const fallbackRaw = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".txt")) || "";
 
@@ -1902,14 +1902,14 @@ def render_nuclei_viewer():
           rawArtifact = requested;
         } else if (jsonArtifact) {
           const jsonLower = jsonArtifact.toLowerCase();
-          if (jsonLower.endsWith(".json")) {
-            const candidate = jsonArtifact.slice(0, -5) + ".txt";
+          if (jsonLower.endsWith(".jsonl")) {
+            const candidate = jsonArtifact.slice(0, -6) + ".txt";
             if (availableNucleiFiles.includes(candidate)) {
               rawArtifact = candidate;
             }
           }
-          if (!rawArtifact && jsonLower.endsWith(".jsonl")) {
-            const candidate = jsonArtifact.slice(0, -6) + ".txt";
+          if (!rawArtifact && jsonLower.endsWith(".json")) {
+            const candidate = jsonArtifact.slice(0, -5) + ".txt";
             if (availableNucleiFiles.includes(candidate)) {
               rawArtifact = candidate;
             }
