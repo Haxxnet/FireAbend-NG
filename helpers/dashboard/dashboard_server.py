@@ -1401,6 +1401,31 @@ def render_nuclei_viewer():
         text-transform: uppercase;
         white-space: nowrap;
       }
+      .sort-button {
+        border: 0;
+        background: transparent;
+        padding: 0;
+        color: inherit;
+        font: inherit;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .sort-button:hover {
+        color: #ffffff;
+      }
+      .sort-button.active {
+        color: #ffffff;
+      }
+      .sort-indicator {
+        width: 1rem;
+        display: inline-flex;
+        justify-content: center;
+        color: var(--nv-muted);
+      }
+      .sort-button.active .sort-indicator {
+        color: #c7d2fe;
+      }
       .results-table tbody tr {
         cursor: pointer;
       }
@@ -1448,6 +1473,12 @@ def render_nuclei_viewer():
         color: #dbe7f5;
         border-radius: 0.9rem;
         font-size: 0.88rem;
+      }
+      .detail-description {
+        max-height: 12rem;
+        overflow: auto;
+        white-space: pre-wrap;
+        line-height: 1.6;
       }
       .empty-state {
         min-height: 16rem;
@@ -1556,6 +1587,9 @@ def render_nuclei_viewer():
             <a id="openJsonArtifact" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
               <i class="bi bi-braces"></i> JSON
             </a>
+            <button id="exportExcelButton" class="btn btn-outline-success" type="button">
+              <i class="bi bi-file-earmark-excel"></i> Export Excel
+            </button>
           </div>
 
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -1570,13 +1604,13 @@ def render_nuclei_viewer():
             <table class="table results-table align-middle">
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Host</th>
-                  <th>IP Address</th>
-                  <th>Port</th>
-                  <th>Severity</th>
-                  <th>Last Found</th>
-                  <th>Template</th>
+                  <th><button class="sort-button" type="button" data-sort-key="title">Title <span class="sort-indicator" data-sort-indicator="title">↕</span></button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="host">Host <span class="sort-indicator" data-sort-indicator="host">↕</span></button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="ip">IP Address <span class="sort-indicator" data-sort-indicator="ip">↕</span></button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="port">Port <span class="sort-indicator" data-sort-indicator="port">↕</span></button></th>
+                  <th><button class="sort-button active" type="button" data-sort-key="severity">Severity <span class="sort-indicator" data-sort-indicator="severity">↓</span></button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="lastFound">Last Found <span class="sort-indicator" data-sort-indicator="lastFound">↕</span></button></th>
+                  <th><button class="sort-button" type="button" data-sort-key="template">Template <span class="sort-indicator" data-sort-indicator="template">↕</span></button></th>
                 </tr>
               </thead>
               <tbody id="resultsTableBody"></tbody>
@@ -1616,6 +1650,8 @@ def render_nuclei_viewer():
       let activeJsonArtifactPath = "";
       let activeRawArtifactPath = "";
       let availableNucleiFiles = [];
+      let currentSortKey = "severity";
+      let currentSortDirection = "asc";
       const selectedSeverities = new Set(severityOrder);
       const selectedHosts = new Set();
       const selectedTemplates = new Set();
@@ -1644,8 +1680,71 @@ def render_nuclei_viewer():
         return index === -1 ? severityOrder.length : index;
       }
 
+      function compareValues(left, right) {
+        const leftValue = left ?? "";
+        const rightValue = right ?? "";
+        const leftNumber = Number(leftValue);
+        const rightNumber = Number(rightValue);
+
+        if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && String(leftValue).trim() !== "" && String(rightValue).trim() !== "") {
+          return leftNumber - rightNumber;
+        }
+
+        return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" });
+      }
+
+      function sortResults(results) {
+        return [...results].sort((left, right) => {
+          let comparison = 0;
+
+          if (currentSortKey === "severity") {
+            comparison = severityRank(left._severity) - severityRank(right._severity);
+          } else if (currentSortKey === "title") {
+            comparison = compareValues(left._name, right._name);
+          } else if (currentSortKey === "host") {
+            comparison = compareValues(left._host, right._host);
+          } else if (currentSortKey === "ip") {
+            comparison = compareValues(left._ip, right._ip);
+          } else if (currentSortKey === "port") {
+            comparison = compareValues(left._port, right._port);
+          } else if (currentSortKey === "lastFound") {
+            comparison = compareValues(left.timestamp || left._lastFound, right.timestamp || right._lastFound);
+          } else if (currentSortKey === "template") {
+            comparison = compareValues(left._template, right._template);
+          }
+
+          if (comparison === 0) {
+            comparison = compareValues(left._name, right._name);
+          }
+
+          return currentSortDirection === "asc" ? comparison : -comparison;
+        });
+      }
+
+      function updateSortIndicators() {
+        document.querySelectorAll("[data-sort-key]").forEach((button) => {
+          const sortKey = button.dataset.sortKey;
+          const indicator = button.querySelector(".sort-indicator");
+          const active = sortKey === currentSortKey;
+          button.classList.toggle("active", active);
+          if (!indicator) {
+            return;
+          }
+          indicator.textContent = active ? (currentSortDirection === "asc" ? "↑" : "↓") : "↕";
+        });
+      }
+
       function uniq(values) {
         return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      }
+
+      function resetSeverityFiltersToAvailable() {
+        selectedSeverities.clear();
+        severityOrder.forEach((severity) => {
+          if (allResults.some((result) => result._severity === severity)) {
+            selectedSeverities.add(severity);
+          }
+        });
       }
 
       function formatValue(value) {
@@ -2045,20 +2144,16 @@ def render_nuclei_viewer():
           .filter((result) => !selectedHosts.size || selectedHosts.has(result._host))
           .filter((result) => !selectedTemplates.size || selectedTemplates.has(result._template))
           .filter((result) => !typeValue || result._type === typeValue)
-          .filter((result) => !searchValue || result._search.includes(searchValue))
-          .sort((left, right) => {
-            const severityDiff = severityRank(left._severity) - severityRank(right._severity);
-            if (severityDiff !== 0) {
-              return severityDiff;
-            }
-            return left._name.localeCompare(right._name);
-          });
+          .filter((result) => !searchValue || result._search.includes(searchValue));
+
+        filteredResults = sortResults(filteredResults);
 
         renderResultsTable();
       }
 
       function renderResultsTable() {
         const tableBody = document.getElementById("resultsTableBody");
+        updateSortIndicators();
         document.getElementById("resultSummary").textContent = filteredResults.length
           ? `${filteredResults.length} of ${allResults.length} findings shown`
           : `0 of ${allResults.length} findings shown`;
@@ -2152,6 +2247,127 @@ def render_nuclei_viewer():
         `;
       }
 
+      function renderDescriptionBlock(value) {
+        if (!value) {
+          return "";
+        }
+        return `
+          <section class="detail-block rounded-4 p-3">
+            <div class="small text-uppercase fw-semibold small-muted mb-2">Description</div>
+            <div class="detail-description">${escapeHtml(value)}</div>
+          </section>
+        `;
+      }
+
+      function buildExcelTableMarkup(rows) {
+        const headers = [
+          "Title",
+          "Host",
+          "IP Address",
+          "Port",
+          "Severity",
+          "Last Found",
+          "Template",
+          "Type",
+          "Matched At",
+          "Description",
+          "References",
+          "Tags",
+          "Extracted Results",
+          "CVE",
+          "CVSS Score",
+          "Template Path",
+          "Matcher",
+          "Curl Command"
+        ];
+        const headerRow = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+        const bodyRows = rows.map((result) => {
+          const references = result.info?.reference || result.reference || [];
+          const tags = result.info?.tags || [];
+          const extractedResults = result["extracted-results"] || [];
+          const classification = result.info?.classification || {};
+          const description = result.info?.description || result.description || "";
+          const cells = [
+            result._name || "-",
+            result._host || "-",
+            result._ip || "-",
+            result._port || "-",
+            result._severity || "-",
+            result._lastFound || "-",
+            result._template || "-",
+            result._type || "-",
+            result._matchedAt || "-",
+            description || "-",
+            Array.isArray(references) ? references.join(" | ") : (references || "-"),
+            Array.isArray(tags) ? tags.join(", ") : (tags || "-"),
+            Array.isArray(extractedResults) ? extractedResults.join(" | ") : (extractedResults || "-"),
+            classification["cve-id"] || classification.cve_id || "-",
+            classification["cvss-score"] || classification.cvss_score || "-",
+            result["template-path"] || "-",
+            result["matcher-name"] || result.matcher_name || "-",
+            result["curl-command"] || result.curl_command || "-"
+          ];
+
+          return `
+            <tr>
+              ${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}
+            </tr>
+          `;
+        }).join("");
+
+        return `
+          <table>
+            <thead><tr>${headerRow}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        `;
+      }
+
+      function exportResultsToExcel() {
+        if (!filteredResults.length) {
+          return;
+        }
+
+        const artifactName = (activeArtifactPath ? activeArtifactPath.split("/").pop() : "nuclei-results")
+          .replace(/[.][^.]+$/, "")
+          .replace(/[^a-zA-Z0-9_-]+/g, "-");
+        const filename = `${artifactName || "nuclei-results"}-table.xls`;
+        const workbook = `
+          <html xmlns:o="urn:schemas-microsoft-com:office:office"
+                xmlns:x="urn:schemas-microsoft-com:office:excel"
+                xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+              <meta charset="utf-8">
+              <!--[if gte mso 9]>
+              <xml>
+                <x:ExcelWorkbook>
+                  <x:ExcelWorksheets>
+                    <x:ExcelWorksheet>
+                      <x:Name>Nuclei Results</x:Name>
+                      <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+                    </x:ExcelWorksheet>
+                  </x:ExcelWorksheets>
+                </x:ExcelWorkbook>
+              </xml>
+              <![endif]-->
+            </head>
+            <body>
+              ${buildExcelTableMarkup(filteredResults)}
+            </body>
+          </html>
+        `;
+
+        const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
       function renderDetail(result) {
         const container = document.getElementById("resultDetail");
         const selectionState = document.getElementById("detailSelectionState");
@@ -2175,6 +2391,7 @@ def render_nuclei_viewer():
         const extractedResults = result["extracted-results"] || [];
         const tags = result.info?.tags || [];
         const classification = result.info?.classification || {};
+        const description = result.info?.description || result.description || "";
 
         container.innerHTML = `
           <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -2206,6 +2423,7 @@ def render_nuclei_viewer():
           </div>
 
           <div class="d-grid gap-3">
+            ${renderDescriptionBlock(description)}
             ${renderListBlock("Tags", tags)}
             ${renderListBlock("Extracted Results", extractedResults)}
             ${references.length ? `
@@ -2229,8 +2447,7 @@ def render_nuclei_viewer():
       function clearFilters() {
         document.getElementById("searchInput").value = "";
         document.getElementById("typeFilter").value = "";
-        selectedSeverities.clear();
-        severityOrder.forEach((severity) => selectedSeverities.add(severity));
+        resetSeverityFiltersToAvailable();
         selectedHosts.clear();
         selectedTemplates.clear();
         renderSidebarFilters();
@@ -2241,6 +2458,19 @@ def render_nuclei_viewer():
         document.getElementById("searchInput").addEventListener("input", applyFilters);
         document.getElementById("typeFilter").addEventListener("change", applyFilters);
         document.getElementById("clearFiltersButton").addEventListener("click", clearFilters);
+        document.getElementById("exportExcelButton").addEventListener("click", exportResultsToExcel);
+        document.querySelectorAll("[data-sort-key]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const sortKey = button.dataset.sortKey;
+            if (currentSortKey === sortKey) {
+              currentSortDirection = currentSortDirection === "asc" ? "desc" : "asc";
+            } else {
+              currentSortKey = sortKey;
+              currentSortDirection = sortKey === "severity" ? "asc" : "asc";
+            }
+            applyFilters();
+          });
+        });
       }
 
       async function bootstrapViewer() {
@@ -2291,6 +2521,7 @@ def render_nuclei_viewer():
 
         const rawText = await fetchArtifactText(activeJsonArtifactPath);
         allResults = parseNucleiResults(rawText).map(hydrateResult);
+        resetSeverityFiltersToAvailable();
         renderMetrics(allResults);
         renderTypeFilter(allResults);
         renderSidebarFilters();
