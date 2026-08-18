@@ -248,6 +248,7 @@ def collect_findings_files(scan_dir):
         return []
 
     relative_paths = []
+    nuclei_candidates = []
     for item in sorted(findings_dir.rglob("*")):
         if not item.is_file():
             continue
@@ -260,7 +261,23 @@ def collect_findings_files(scan_dir):
                 relative_paths.append(rel_path)
             continue
 
+        if rel_findings_path.startswith("nuclei/"):
+            nuclei_candidates.append(rel_path)
+            continue
+
         relative_paths.append(rel_path)
+
+    if nuclei_candidates:
+        preferred_nuclei_path = next(
+            (
+                path
+                for suffix in (".json", ".jsonl", ".txt")
+                for path in nuclei_candidates
+                if path.lower().endswith(suffix)
+            ),
+            nuclei_candidates[0],
+        )
+        relative_paths.append(preferred_nuclei_path)
 
     return collect_matching_files(scan_dir, relative_paths)
 
@@ -1069,6 +1086,14 @@ def render_index():
           return artifactStyles.findings;
         }}
 
+        function buildArtifactHref(file) {{
+          const path = String(file.relative_path || "");
+          if (path.toLowerCase().includes("/nuclei/")) {{
+            return `/nuclei-viewer?artifact=${{encodeURIComponent(path)}}`;
+          }}
+          return file.url;
+        }}
+
         document.getElementById("artifactSections").innerHTML = sections.map((section) => `
           <div class="col-12">
             <div class="artifact-section-panel rounded-4 p-3">
@@ -1081,7 +1106,7 @@ def render_index():
                   const style = getArtifactStyle(section, file);
                   return `
                   <div class="col-md-6 col-xxl-4">
-                    <a class="artifact-link text-reset" href="${{file.url}}" target="_blank" rel="noopener">
+                    <a class="artifact-link text-reset" href="${{buildArtifactHref(file)}}" target="_blank" rel="noopener">
                       <div class="artifact-card rounded-4 p-3 h-100" style="--artifact-accent: ${{style.accent}}; --artifact-soft: ${{style.soft}};">
                         <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
                           <div class="artifact-icon fs-5">
@@ -1210,6 +1235,1097 @@ def render_index():
 </html>"""
 
 
+def render_nuclei_viewer():
+    bootstrap_css_integrity_attr = (
+        f' integrity="{DASHBOARD_ASSETS["bootstrap_css_integrity"]}" crossorigin="anonymous"'
+        if DASHBOARD_ASSETS["bootstrap_css_integrity"]
+        else ""
+    )
+    bootstrap_js_integrity_attr = (
+        f' integrity="{DASHBOARD_ASSETS["bootstrap_js_integrity"]}" crossorigin="anonymous"'
+        if DASHBOARD_ASSETS["bootstrap_js_integrity"]
+        else ""
+    )
+    return """<!doctype html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nuclei Results Viewer</title>
+    <link href="__BOOTSTRAP_CSS_HREF__" rel="stylesheet"__BOOTSTRAP_CSS_INTEGRITY__>
+    <link rel="stylesheet" href="__BOOTSTRAP_ICONS_HREF__">
+    <style>
+      :root {
+        --nv-bg: #05070c;
+        --nv-panel: rgba(13, 16, 23, 0.92);
+        --nv-panel-soft: rgba(18, 22, 31, 0.92);
+        --nv-border: rgba(148, 163, 184, 0.14);
+        --nv-ink: #edf2f8;
+        --nv-muted: #8b98ad;
+        --nv-accent: #4f46e5;
+        --nv-critical: #7c3aed;
+        --nv-high: #dc2626;
+        --nv-medium: #f97316;
+        --nv-low: #eab308;
+        --nv-info: #22c55e;
+        --nv-unknown: #64748b;
+      }
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(79, 70, 229, 0.11), transparent 24%),
+          radial-gradient(circle at top right, rgba(124, 58, 237, 0.12), transparent 22%),
+          linear-gradient(180deg, #090b10 0%, var(--nv-bg) 100%);
+        color: var(--nv-ink);
+        min-height: 100vh;
+      }
+      .shell {
+        max-width: 1880px;
+      }
+      .hero,
+      .panel {
+        background: var(--nv-panel);
+        border: 1px solid var(--nv-border);
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
+      }
+      .hero {
+        background: linear-gradient(180deg, rgba(19, 23, 33, 0.96), rgba(12, 15, 22, 0.96));
+      }
+      .panel-soft {
+        background: var(--nv-panel-soft);
+      }
+      .small-muted {
+        color: var(--nv-muted);
+      }
+      .metric-card {
+        min-height: 92px;
+      }
+      .metric-value {
+        font-size: clamp(1.35rem, 2.5vw, 1.85rem);
+        font-weight: 700;
+      }
+      .main-grid {
+        display: grid;
+        grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+        gap: 1.25rem;
+      }
+      .sidebar-panel {
+        padding: 1rem;
+      }
+      .sidebar-section + .sidebar-section {
+        margin-top: 1rem;
+      }
+      .sidebar-list {
+        max-height: 16rem;
+        overflow: auto;
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        border-radius: 1rem;
+        background: rgba(10, 13, 19, 0.9);
+      }
+      .sidebar-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 0.75rem;
+        align-items: center;
+        padding: 0.72rem 0.85rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+      }
+      .sidebar-row:last-child {
+        border-bottom: 0;
+      }
+      .sidebar-row input[type="checkbox"] {
+        accent-color: var(--nv-accent);
+      }
+      .sidebar-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.93rem;
+      }
+      .count-badge {
+        min-width: 1.7rem;
+        height: 1.7rem;
+        padding: 0 0.45rem;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(148, 163, 184, 0.12);
+        color: var(--nv-ink);
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+      .toolbar {
+        display: flex;
+        gap: 0.85rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .toolbar .form-control,
+      .toolbar .form-select {
+        background: rgba(10, 13, 19, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        color: var(--nv-ink);
+      }
+      .toolbar .form-control::placeholder {
+        color: var(--nv-muted);
+      }
+      .toolbar .form-control:focus,
+      .toolbar .form-select:focus {
+        background: rgba(10, 13, 19, 0.98);
+        color: var(--nv-ink);
+        border-color: rgba(79, 70, 229, 0.45);
+        box-shadow: 0 0 0 0.2rem rgba(79, 70, 229, 0.16);
+      }
+      .results-table-wrap {
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        border-radius: 1rem;
+        overflow: auto;
+        background: rgba(10, 13, 19, 0.92);
+      }
+      .results-table {
+        margin-bottom: 0;
+        --bs-table-bg: transparent;
+        --bs-table-color: var(--nv-ink);
+        --bs-table-border-color: rgba(148, 163, 184, 0.1);
+        --bs-table-hover-color: var(--nv-ink);
+      }
+      .results-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: rgba(28, 32, 42, 0.97);
+        color: #cfd6e4;
+        font-size: 0.79rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .results-table tbody tr {
+        cursor: pointer;
+      }
+      .results-table tbody tr:hover td {
+        background: rgba(79, 70, 229, 0.08);
+      }
+      .results-table tbody tr.active-row td {
+        background: rgba(79, 70, 229, 0.14);
+        box-shadow: inset 0 0 0 999px rgba(79, 70, 229, 0.05);
+      }
+      .results-table td {
+        vertical-align: middle;
+      }
+      .title-cell {
+        min-width: 22rem;
+        max-width: 32rem;
+      }
+      .title-text {
+        font-weight: 600;
+      }
+      .mono-cell {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.88rem;
+      }
+      .severity-pill {
+        border: 1px solid color-mix(in srgb, var(--severity-color, var(--nv-unknown)) 44%, transparent);
+        background: color-mix(in srgb, var(--severity-color, var(--nv-unknown)) 18%, rgba(19, 23, 33, 0.92));
+        color: color-mix(in srgb, var(--severity-color, var(--nv-unknown)) 88%, white);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .detail-panel {
+        margin-top: 1rem;
+      }
+      .detail-block {
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        background: rgba(13, 16, 23, 0.72);
+      }
+      .detail-code {
+        max-height: 14rem;
+        overflow: auto;
+        background: #090d14;
+        color: #dbe7f5;
+        border-radius: 0.9rem;
+        font-size: 0.88rem;
+      }
+      .empty-state {
+        min-height: 16rem;
+        display: grid;
+        place-items: center;
+        text-align: center;
+      }
+      .link-subtle {
+        color: #b9c4ff;
+        text-decoration: none;
+      }
+      .link-subtle:hover {
+        color: #e0e7ff;
+      }
+      .severity-text-critical { color: var(--nv-critical); }
+      .severity-text-high { color: var(--nv-high); }
+      .severity-text-medium { color: var(--nv-medium); }
+      .severity-text-low { color: var(--nv-low); }
+      .severity-text-info { color: var(--nv-info); }
+      .severity-text-unknown { color: var(--nv-unknown); }
+      @media (max-width: 1199.98px) {
+        .main-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 767.98px) {
+        .toolbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .title-cell {
+          min-width: 14rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container-fluid py-4 py-lg-5 shell">
+      <section class="hero rounded-5 p-4 p-lg-5 mb-4">
+        <div class="row g-4 align-items-end">
+          <div class="col-lg-8">
+            <div class="text-uppercase small fw-semibold text-primary-emphasis mb-2">Client-side Viewer</div>
+            <h1 class="display-6 fw-bold mb-2">Nuclei Results</h1>
+            <p class="mb-0 text-white-50">ProjectDiscovery-inspired browser view for filtering and inspecting nuclei findings without a backend parser.</p>
+          </div>
+          <div class="col-lg-4 text-lg-end">
+            <div id="viewerArtifactName" class="fs-5 fw-semibold">Waiting for artifact…</div>
+            <div id="viewerArtifactPath" class="small text-white-50"></div>
+            <div id="viewerStatus" class="small text-white-50 mt-2"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="row g-3 mb-4" id="nucleiMetrics"></section>
+
+      <section class="main-grid">
+        <aside class="panel panel-soft rounded-5 sidebar-panel">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h2 class="h5 mb-1">Filters</h2>
+              <div class="small-muted">Narrow the results like the PD dashboard.</div>
+            </div>
+            <button id="clearFiltersButton" class="btn btn-sm btn-outline-light" type="button">Reset</button>
+          </div>
+
+          <section class="sidebar-section">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 mb-0">Severity</h3>
+              <span class="small-muted small">Risk</span>
+            </div>
+            <div id="severityFilters" class="sidebar-list"></div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 mb-0">Host</h3>
+              <span id="hostFilterSummary" class="small-muted small"></span>
+            </div>
+            <div id="hostFilters" class="sidebar-list"></div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 mb-0">Template</h3>
+              <span id="templateFilterSummary" class="small-muted small"></span>
+            </div>
+            <div id="templateFilters" class="sidebar-list"></div>
+          </section>
+        </aside>
+
+        <section class="panel panel-soft rounded-5 p-3 p-lg-4">
+          <div class="toolbar mb-3">
+            <div class="flex-grow-1" style="min-width: 16rem;">
+              <label class="visually-hidden" for="searchInput">Search findings</label>
+              <input id="searchInput" class="form-control" type="search" placeholder="Type to search finding, host, ip, port, or template id">
+            </div>
+            <div style="min-width: 11rem;">
+              <label class="visually-hidden" for="typeFilter">Type</label>
+              <select id="typeFilter" class="form-select">
+                <option value="">All types</option>
+              </select>
+            </div>
+            <a id="openRawArtifact" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
+              <i class="bi bi-file-earmark-text"></i> Raw
+            </a>
+            <a id="openJsonArtifact" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
+              <i class="bi bi-braces"></i> JSON
+            </a>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+              <h2 class="h5 mb-1">Results</h2>
+              <div id="resultSummary" class="small-muted">Loading results…</div>
+            </div>
+            <div class="small-muted">Compact table view, no description clutter</div>
+          </div>
+
+          <div class="results-table-wrap">
+            <table class="table results-table align-middle">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Host</th>
+                  <th>IP Address</th>
+                  <th>Port</th>
+                  <th>Severity</th>
+                  <th>Last Found</th>
+                  <th>Template</th>
+                </tr>
+              </thead>
+              <tbody id="resultsTableBody"></tbody>
+            </table>
+          </div>
+
+          <div class="panel rounded-4 p-3 p-lg-4 detail-panel">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+              <div>
+                <h2 class="h5 mb-1">Details</h2>
+                <div class="small-muted">Select a row to inspect the underlying nuclei result payload.</div>
+              </div>
+              <div id="detailSelectionState" class="small-muted">No row selected</div>
+            </div>
+            <div id="resultDetail"></div>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <script src="__BOOTSTRAP_JS_SRC__"__BOOTSTRAP_JS_INTEGRITY__></script>
+    <script>
+      const severityOrder = ["critical", "high", "medium", "low", "info", "unknown"];
+      const severityColors = {
+        critical: "var(--nv-critical)",
+        high: "var(--nv-high)",
+        medium: "var(--nv-medium)",
+        low: "var(--nv-low)",
+        info: "var(--nv-info)",
+        unknown: "var(--nv-unknown)"
+      };
+
+      let allResults = [];
+      let filteredResults = [];
+      let selectedResultIndex = -1;
+      let activeArtifactPath = "";
+      let activeJsonArtifactPath = "";
+      let activeRawArtifactPath = "";
+      let availableNucleiFiles = [];
+      const selectedSeverities = new Set(severityOrder);
+      const selectedHosts = new Set();
+      const selectedTemplates = new Set();
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;"
+        })[char]);
+      }
+
+      function getQueryParam(name) {
+        return new URLSearchParams(window.location.search).get(name) || "";
+      }
+
+      function normalizeSeverity(value) {
+        const normalized = String(value || "unknown").trim().toLowerCase();
+        return severityOrder.includes(normalized) ? normalized : "unknown";
+      }
+
+      function severityRank(value) {
+        const index = severityOrder.indexOf(normalizeSeverity(value));
+        return index === -1 ? severityOrder.length : index;
+      }
+
+      function uniq(values) {
+        return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      }
+
+      function formatValue(value) {
+        if (value == null || value === "") {
+          return "-";
+        }
+        if (Array.isArray(value)) {
+          return value.length ? value.join(", ") : "-";
+        }
+        if (typeof value === "object") {
+          return JSON.stringify(value, null, 2);
+        }
+        return String(value);
+      }
+
+      function parseUrlSafe(value) {
+        if (!value || !String(value).includes("://")) {
+          return null;
+        }
+        try {
+          return new URL(String(value));
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function getResultName(result) {
+        return result["template-name"] || result.info?.name || result["template-id"] || "Unnamed finding";
+      }
+
+      function getResultTemplate(result) {
+        return result["template-id"] || "";
+      }
+
+      function getResultType(result) {
+        return result.type || result.protocol || result.scheme || "";
+      }
+
+      function getResultMatchedAt(result) {
+        return result["matched-at"] || result.matched || "";
+      }
+
+      function getResultHost(result) {
+        const parsedHost = parseUrlSafe(result.host);
+        if (parsedHost) {
+          return parsedHost.hostname;
+        }
+
+        const parsedMatched = parseUrlSafe(getResultMatchedAt(result));
+        if (parsedMatched) {
+          return parsedMatched.hostname;
+        }
+
+        if (result.host) {
+          return String(result.host).replace(/^https?:\\/\\//, "").split("/")[0];
+        }
+
+        return result.ip || "";
+      }
+
+      function getResultPort(result) {
+        if (result.port) {
+          return String(result.port);
+        }
+
+        for (const candidate of [result.host, getResultMatchedAt(result)]) {
+          const parsed = parseUrlSafe(candidate);
+          if (parsed) {
+            if (parsed.port) {
+              return parsed.port;
+            }
+            if (parsed.protocol === "https:") {
+              return "443";
+            }
+            if (parsed.protocol === "http:") {
+              return "80";
+            }
+          }
+        }
+
+        return "";
+      }
+
+      function getLastFound(result) {
+        if (!result.timestamp) {
+          return "-";
+        }
+        const date = new Date(result.timestamp);
+        if (Number.isNaN(date.getTime())) {
+          return String(result.timestamp);
+        }
+        return date.toLocaleString();
+      }
+
+      function getResultSearchValue(result) {
+        return [
+          getResultName(result),
+          getResultTemplate(result),
+          getResultHost(result),
+          result.ip,
+          getResultPort(result),
+          getResultType(result),
+          getResultMatchedAt(result)
+        ].join(" ").toLowerCase();
+      }
+
+      function buildCandidatePaths(artifactPath) {
+        if (!artifactPath) {
+          return [];
+        }
+
+        const lower = artifactPath.toLowerCase();
+        if (lower.endsWith(".json") || lower.endsWith(".jsonl")) {
+          return [artifactPath];
+        }
+
+        if (lower.endsWith(".txt")) {
+          return [
+            artifactPath.slice(0, -4) + ".json",
+            artifactPath.slice(0, -4) + ".jsonl"
+          ];
+        }
+
+        return [artifactPath + ".json", artifactPath + ".jsonl"];
+      }
+
+      function resolveArtifactPaths(requestedArtifact) {
+        const requested = String(requestedArtifact || "");
+        const lower = requested.toLowerCase();
+        const fallbackJson = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".json"))
+          || availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".jsonl"))
+          || "";
+        const fallbackRaw = availableNucleiFiles.find((path) => path.toLowerCase().endsWith(".txt")) || "";
+
+        let jsonArtifact = "";
+        for (const candidate of buildCandidatePaths(requested)) {
+          if (availableNucleiFiles.includes(candidate)) {
+            jsonArtifact = candidate;
+            break;
+          }
+        }
+
+        if (!jsonArtifact && (lower.endsWith(".json") || lower.endsWith(".jsonl")) && availableNucleiFiles.includes(requested)) {
+          jsonArtifact = requested;
+        }
+        if (!jsonArtifact) {
+          jsonArtifact = fallbackJson;
+        }
+
+        let rawArtifact = "";
+        if (lower.endsWith(".txt") && availableNucleiFiles.includes(requested)) {
+          rawArtifact = requested;
+        } else if (jsonArtifact) {
+          const jsonLower = jsonArtifact.toLowerCase();
+          if (jsonLower.endsWith(".json")) {
+            const candidate = jsonArtifact.slice(0, -5) + ".txt";
+            if (availableNucleiFiles.includes(candidate)) {
+              rawArtifact = candidate;
+            }
+          }
+          if (!rawArtifact && jsonLower.endsWith(".jsonl")) {
+            const candidate = jsonArtifact.slice(0, -6) + ".txt";
+            if (availableNucleiFiles.includes(candidate)) {
+              rawArtifact = candidate;
+            }
+          }
+        }
+        if (!rawArtifact) {
+          rawArtifact = fallbackRaw;
+        }
+
+        return {
+          artifactPath: requested || jsonArtifact || rawArtifact,
+          jsonArtifactPath: jsonArtifact,
+          rawArtifactPath: rawArtifact
+        };
+      }
+
+      async function fetchState() {
+        const response = await fetch("/api/state", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("Unable to load dashboard state.");
+        }
+        return response.json();
+      }
+
+      async function fetchArtifactText(path) {
+        const response = await fetch(`/files/${encodeURIComponent(path)}`, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Unable to load artifact: ${path}`);
+        }
+        return response.text();
+      }
+
+      function parseNucleiResults(rawText) {
+        const trimmed = rawText.trim();
+        if (!trimmed) {
+          return [];
+        }
+
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            return parsed;
+          }
+          if (Array.isArray(parsed.results)) {
+            return parsed.results;
+          }
+          return [parsed];
+        } catch (error) {
+          const rows = [];
+          const lines = rawText.split(/\\r?\\n/);
+          for (const line of lines) {
+            const candidate = line.trim();
+            if (!candidate) {
+              continue;
+            }
+            rows.push(JSON.parse(candidate));
+          }
+          return rows;
+        }
+      }
+
+      function hydrateResult(result, index) {
+        const severity = normalizeSeverity(result.info?.severity || result.severity);
+        return {
+          ...result,
+          _index: index,
+          _severity: severity,
+          _name: getResultName(result),
+          _template: getResultTemplate(result),
+          _host: getResultHost(result),
+          _ip: result.ip || "",
+          _port: getResultPort(result),
+          _type: getResultType(result),
+          _matchedAt: getResultMatchedAt(result),
+          _lastFound: getLastFound(result),
+          _search: getResultSearchValue(result)
+        };
+      }
+
+      function renderMetrics(results) {
+        const counts = {
+          total: results.length,
+          hosts: new Set(results.map((result) => result._host).filter(Boolean)).size,
+          templates: new Set(results.map((result) => result._template).filter(Boolean)).size,
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          info: 0,
+          unknown: 0
+        };
+
+        results.forEach((result) => {
+          counts[result._severity] = (counts[result._severity] || 0) + 1;
+        });
+
+        const metricDefs = [
+          ["Findings", counts.total, "bi-bug-fill", "#818cf8"],
+          ["Hosts", counts.hosts, "bi-hdd-network-fill", "#38bdf8"],
+          ["Templates", counts.templates, "bi-grid-1x2-fill", "#cbd5e1"],
+          ["Critical", counts.critical, "bi-exclamation-octagon-fill", severityColors.critical],
+          ["High", counts.high, "bi-fire", severityColors.high],
+          ["Medium", counts.medium, "bi-funnel-fill", severityColors.medium],
+          ["Low", counts.low, "bi-arrow-down-circle-fill", severityColors.low],
+          ["Info", counts.info, "bi-info-circle-fill", severityColors.info]
+        ];
+
+        document.getElementById("nucleiMetrics").innerHTML = metricDefs.map(([label, value, icon, color]) => `
+          <div class="col-6 col-md-4 col-xl">
+            <div class="panel panel-soft rounded-5 p-3 metric-card h-100">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="small text-uppercase fw-semibold" style="color: ${color};">${escapeHtml(label)}</div>
+                <i class="bi ${icon}" style="color: ${color};"></i>
+              </div>
+              <div class="metric-value">${value}</div>
+              <div class="small-muted small">Current result count</div>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      function renderCheckboxList(containerId, values, selectedSet, renderer, summaryId = null) {
+        const container = document.getElementById(containerId);
+        if (!values.length) {
+          container.innerHTML = `
+            <div class="sidebar-row">
+              <div class="small-muted">No entries</div>
+            </div>
+          `;
+          if (summaryId) {
+            document.getElementById(summaryId).textContent = "";
+          }
+          return;
+        }
+
+        container.innerHTML = values.map(renderer).join("");
+
+        if (summaryId) {
+          const total = values.length;
+          const selected = selectedSet.size;
+          document.getElementById(summaryId).textContent = selected ? `${selected}/${total}` : `${total}`;
+        }
+      }
+
+      function renderSidebarFilters() {
+        const severityCounts = Object.fromEntries(
+          severityOrder.map((severity) => [severity, allResults.filter((result) => result._severity === severity).length])
+        );
+        const hosts = uniq(allResults.map((result) => result._host));
+        const templates = uniq(allResults.map((result) => result._template));
+        const hostCounts = Object.fromEntries(
+          hosts.map((host) => [host, allResults.filter((result) => result._host === host).length])
+        );
+        const templateCounts = Object.fromEntries(
+          templates.map((template) => [template, allResults.filter((result) => result._template === template).length])
+        );
+
+        renderCheckboxList(
+          "severityFilters",
+          severityOrder,
+          selectedSeverities,
+          (severity) => `
+            <label class="sidebar-row">
+              <input type="checkbox" data-filter-group="severity" data-filter-value="${escapeHtml(severity)}" ${selectedSeverities.has(severity) ? "checked" : ""}>
+              <span class="sidebar-label severity-text-${severity}">${escapeHtml(severity)}</span>
+              <span class="count-badge">${severityCounts[severity] || 0}</span>
+            </label>
+          `
+        );
+
+        renderCheckboxList(
+          "hostFilters",
+          hosts,
+          selectedHosts,
+          (host) => `
+            <label class="sidebar-row">
+              <input type="checkbox" data-filter-group="host" data-filter-value="${escapeHtml(host)}" ${selectedHosts.has(host) ? "checked" : ""}>
+              <span class="sidebar-label">${escapeHtml(host)}</span>
+              <span class="count-badge">${hostCounts[host] || 0}</span>
+            </label>
+          `,
+          "hostFilterSummary"
+        );
+
+        renderCheckboxList(
+          "templateFilters",
+          templates,
+          selectedTemplates,
+          (template) => `
+            <label class="sidebar-row">
+              <input type="checkbox" data-filter-group="template" data-filter-value="${escapeHtml(template)}" ${selectedTemplates.has(template) ? "checked" : ""}>
+              <span class="sidebar-label">${escapeHtml(template)}</span>
+              <span class="count-badge">${templateCounts[template] || 0}</span>
+            </label>
+          `,
+          "templateFilterSummary"
+        );
+
+        document.querySelectorAll("[data-filter-group]").forEach((input) => {
+          input.addEventListener("change", (event) => {
+            const group = event.currentTarget.dataset.filterGroup;
+            const value = event.currentTarget.dataset.filterValue;
+            const checked = event.currentTarget.checked;
+            const targetSet = group === "severity"
+              ? selectedSeverities
+              : group === "host"
+                ? selectedHosts
+                : selectedTemplates;
+
+            if (checked) {
+              targetSet.add(value);
+            } else {
+              targetSet.delete(value);
+            }
+            renderSidebarFilters();
+            applyFilters();
+          });
+        });
+      }
+
+      function renderTypeFilter(results) {
+        const typeFilter = document.getElementById("typeFilter");
+        const previousValue = typeFilter.value;
+        const types = uniq(results.map((result) => result._type));
+        typeFilter.innerHTML = `<option value="">All types</option>${types.map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join("")}`;
+        typeFilter.value = types.includes(previousValue) ? previousValue : "";
+      }
+
+      function applyFilters() {
+        const searchValue = document.getElementById("searchInput").value.trim().toLowerCase();
+        const typeValue = document.getElementById("typeFilter").value;
+
+        filteredResults = allResults
+          .filter((result) => selectedSeverities.has(result._severity))
+          .filter((result) => !selectedHosts.size || selectedHosts.has(result._host))
+          .filter((result) => !selectedTemplates.size || selectedTemplates.has(result._template))
+          .filter((result) => !typeValue || result._type === typeValue)
+          .filter((result) => !searchValue || result._search.includes(searchValue))
+          .sort((left, right) => {
+            const severityDiff = severityRank(left._severity) - severityRank(right._severity);
+            if (severityDiff !== 0) {
+              return severityDiff;
+            }
+            return left._name.localeCompare(right._name);
+          });
+
+        renderResultsTable();
+      }
+
+      function renderResultsTable() {
+        const tableBody = document.getElementById("resultsTableBody");
+        document.getElementById("resultSummary").textContent = filteredResults.length
+          ? `${filteredResults.length} of ${allResults.length} findings shown`
+          : `0 of ${allResults.length} findings shown`;
+
+        if (!filteredResults.length) {
+          selectedResultIndex = -1;
+          tableBody.innerHTML = `
+            <tr>
+              <td colspan="7" class="py-5">
+                <div class="empty-state">
+                  <div>
+                    <div class="fs-1 mb-3 text-warning"><i class="bi bi-funnel"></i></div>
+                    <h3 class="h5">No findings match the current filters</h3>
+                    <p class="small-muted mb-0">Reset or broaden the filters to bring findings back into view.</p>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          `;
+          renderDetail(null);
+          return;
+        }
+
+        if (selectedResultIndex === -1 || !filteredResults.some((result) => result._index === selectedResultIndex)) {
+          selectedResultIndex = filteredResults[0]._index;
+        }
+
+        tableBody.innerHTML = filteredResults.map((result) => `
+          <tr class="${result._index === selectedResultIndex ? "active-row" : ""}" data-result-index="${result._index}">
+            <td class="title-cell">
+              <div class="title-text">${escapeHtml(result._name)}</div>
+            </td>
+            <td class="mono-cell">${escapeHtml(result._host || "-")}</td>
+            <td class="mono-cell">${escapeHtml(result._ip || "-")}</td>
+            <td class="mono-cell">${escapeHtml(result._port || "-")}</td>
+            <td>
+              <span class="badge severity-pill rounded-pill" style="--severity-color: ${severityColors[result._severity]};">
+                ${escapeHtml(result._severity)}
+              </span>
+            </td>
+            <td>${escapeHtml(result._lastFound)}</td>
+            <td class="mono-cell">${escapeHtml(result._template || "-")}</td>
+          </tr>
+        `).join("");
+
+        document.querySelectorAll("[data-result-index]").forEach((row) => {
+          row.addEventListener("click", () => {
+            selectedResultIndex = Number(row.dataset.resultIndex);
+            renderResultsTable();
+          });
+        });
+
+        const selected = filteredResults.find((result) => result._index === selectedResultIndex) || filteredResults[0];
+        renderDetail(selected);
+      }
+
+      function renderKeyValue(label, value) {
+        return `
+          <div class="col-md-6">
+            <div class="detail-block rounded-4 p-3 h-100">
+              <div class="small text-uppercase fw-semibold small-muted mb-2">${escapeHtml(label)}</div>
+              <div>${escapeHtml(formatValue(value))}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderListBlock(title, values) {
+        if (!values || !values.length) {
+          return "";
+        }
+        return `
+          <section class="detail-block rounded-4 p-3">
+            <div class="small text-uppercase fw-semibold small-muted mb-2">${escapeHtml(title)}</div>
+            <div class="d-flex flex-wrap gap-2">
+              ${values.map((value) => `<span class="badge text-bg-secondary rounded-pill">${escapeHtml(value)}</span>`).join("")}
+            </div>
+          </section>
+        `;
+      }
+
+      function renderCodeBlock(title, value) {
+        if (!value) {
+          return "";
+        }
+        return `
+          <details class="detail-block rounded-4 p-3">
+            <summary class="fw-semibold">${escapeHtml(title)}</summary>
+            <pre class="detail-code p-3 mt-3 mb-0"><code>${escapeHtml(formatValue(value))}</code></pre>
+          </details>
+        `;
+      }
+
+      function renderDetail(result) {
+        const container = document.getElementById("resultDetail");
+        const selectionState = document.getElementById("detailSelectionState");
+        if (!result) {
+          selectionState.textContent = "No row selected";
+          container.innerHTML = `
+            <div class="empty-state detail-block rounded-4 p-4">
+              <div>
+                <div class="fs-1 mb-3 text-warning"><i class="bi bi-binoculars"></i></div>
+                <h3 class="h5">No finding selected</h3>
+                <p class="small-muted mb-0">Choose a result row to inspect its full nuclei payload.</p>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        selectionState.textContent = `${result._host || "-"}:${result._port || "-"}`;
+
+        const references = result.info?.reference || result.reference || [];
+        const extractedResults = result["extracted-results"] || [];
+        const tags = result.info?.tags || [];
+        const classification = result.info?.classification || {};
+
+        container.innerHTML = `
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div>
+              <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <h3 class="h4 mb-0">${escapeHtml(result._name)}</h3>
+                <span class="badge severity-pill rounded-pill" style="--severity-color: ${severityColors[result._severity]};">
+                  ${escapeHtml(result._severity)}
+                </span>
+              </div>
+              <div class="small-muted">${escapeHtml(result._host || "-")} on port ${escapeHtml(result._port || "-")}</div>
+            </div>
+            <div class="small text-end">
+              <div><span class="small-muted">Matched:</span> ${escapeHtml(result._matchedAt || "-")}</div>
+              <div><span class="small-muted">Last Found:</span> ${escapeHtml(result._lastFound)}</div>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            ${renderKeyValue("Template ID", result._template)}
+            ${renderKeyValue("Host", result._host)}
+            ${renderKeyValue("IP Address", result._ip)}
+            ${renderKeyValue("Port", result._port)}
+            ${renderKeyValue("Type", result._type)}
+            ${renderKeyValue("Matcher", result["matcher-name"] || result.matcher_name)}
+            ${renderKeyValue("Template Path", result["template-path"])}
+            ${renderKeyValue("CVE", classification["cve-id"] || classification.cve_id)}
+            ${renderKeyValue("CVSS Score", classification["cvss-score"] || classification.cvss_score)}
+          </div>
+
+          <div class="d-grid gap-3">
+            ${renderListBlock("Tags", tags)}
+            ${renderListBlock("Extracted Results", extractedResults)}
+            ${references.length ? `
+              <section class="detail-block rounded-4 p-3">
+                <div class="small text-uppercase fw-semibold small-muted mb-2">References</div>
+                <div class="d-grid gap-2">
+                  ${references.map((reference) => `
+                    <a class="link-subtle" href="${escapeHtml(reference)}" target="_blank" rel="noopener">${escapeHtml(reference)}</a>
+                  `).join("")}
+                </div>
+              </section>
+            ` : ""}
+            ${renderCodeBlock("Curl Command", result["curl-command"] || result.curl_command)}
+            ${renderCodeBlock("Request", result.request)}
+            ${renderCodeBlock("Response", result.response)}
+            ${renderCodeBlock("Raw Result JSON", result)}
+          </div>
+        `;
+      }
+
+      function clearFilters() {
+        document.getElementById("searchInput").value = "";
+        document.getElementById("typeFilter").value = "";
+        selectedSeverities.clear();
+        severityOrder.forEach((severity) => selectedSeverities.add(severity));
+        selectedHosts.clear();
+        selectedTemplates.clear();
+        renderSidebarFilters();
+        applyFilters();
+      }
+
+      function wireFilterControls() {
+        document.getElementById("searchInput").addEventListener("input", applyFilters);
+        document.getElementById("typeFilter").addEventListener("change", applyFilters);
+        document.getElementById("clearFiltersButton").addEventListener("click", clearFilters);
+      }
+
+      async function bootstrapViewer() {
+        wireFilterControls();
+
+        const requestedArtifact = getQueryParam("artifact");
+        const state = await fetchState();
+        availableNucleiFiles = (state.sections || [])
+          .flatMap((section) => section.files || [])
+          .map((file) => file.relative_path)
+          .filter((path) => String(path || "").toLowerCase().includes("/nuclei/"));
+
+        const resolved = resolveArtifactPaths(requestedArtifact);
+        activeArtifactPath = resolved.artifactPath;
+        activeJsonArtifactPath = resolved.jsonArtifactPath;
+        activeRawArtifactPath = resolved.rawArtifactPath;
+
+        document.getElementById("viewerArtifactName").textContent = activeArtifactPath ? activeArtifactPath.split("/").pop() : "No nuclei artifact found";
+        document.getElementById("viewerArtifactPath").textContent = activeArtifactPath || "No artifact path available";
+        document.getElementById("viewerStatus").textContent = activeJsonArtifactPath
+          ? "Rendering nuclei findings from the generated JSON artifact."
+          : "No nuclei JSON artifact was found for this scan yet.";
+        document.getElementById("openJsonArtifact").href = activeJsonArtifactPath ? `/files/${encodeURIComponent(activeJsonArtifactPath)}` : "#";
+        document.getElementById("openJsonArtifact").classList.toggle("disabled", !activeJsonArtifactPath);
+        document.getElementById("openRawArtifact").href = activeRawArtifactPath ? `/files/${encodeURIComponent(activeRawArtifactPath)}` : "#";
+        document.getElementById("openRawArtifact").classList.toggle("disabled", !activeRawArtifactPath);
+
+        if (!activeJsonArtifactPath) {
+          renderMetrics([]);
+          renderSidebarFilters();
+          renderDetail(null);
+          document.getElementById("resultsTableBody").innerHTML = `
+            <tr>
+              <td colspan="7" class="py-5">
+                <div class="empty-state">
+                  <div>
+                    <div class="fs-1 mb-3 text-warning"><i class="bi bi-braces-asterisk"></i></div>
+                    <h3 class="h5">No JSON nuclei artifact available</h3>
+                    <p class="small-muted mb-0">Run the updated nuclei job, then reopen this viewer to browse findings in the new table layout.</p>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          `;
+          document.getElementById("resultSummary").textContent = "No JSON artifact available";
+          return;
+        }
+
+        const rawText = await fetchArtifactText(activeJsonArtifactPath);
+        allResults = parseNucleiResults(rawText).map(hydrateResult);
+        renderMetrics(allResults);
+        renderTypeFilter(allResults);
+        renderSidebarFilters();
+        applyFilters();
+      }
+
+      bootstrapViewer().catch((error) => {
+        document.getElementById("viewerStatus").textContent = error.message || "Unable to load nuclei viewer.";
+        document.getElementById("resultsTableBody").innerHTML = `
+          <tr>
+            <td colspan="7" class="py-5">
+              <div class="empty-state">
+                <div>
+                  <div class="fs-1 mb-3 text-danger"><i class="bi bi-exclamation-triangle-fill"></i></div>
+                  <h3 class="h5">Viewer error</h3>
+                  <p class="small-muted mb-0">${escapeHtml(error.message || "Unknown error")}</p>
+                </div>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+    </script>
+  </body>
+</html>""".replace("__BOOTSTRAP_CSS_HREF__", DASHBOARD_ASSETS["bootstrap_css_href"]).replace(
+        "__BOOTSTRAP_CSS_INTEGRITY__", bootstrap_css_integrity_attr
+    ).replace(
+        "__BOOTSTRAP_ICONS_HREF__", DASHBOARD_ASSETS["bootstrap_icons_href"]
+    ).replace(
+        "__BOOTSTRAP_JS_SRC__", DASHBOARD_ASSETS["bootstrap_js_src"]
+    ).replace(
+        "__BOOTSTRAP_JS_INTEGRITY__", bootstrap_js_integrity_attr
+    )
+
+
 def build_handler(scan_dir):
     class DashboardHandler(BaseHTTPRequestHandler):
         server_version = "FireAbendDashboard/1.0"
@@ -1278,6 +2394,10 @@ def build_handler(scan_dir):
             parsed = urlparse(self.path)
             if parsed.path == "/":
                 self.send_html(render_index())
+                return
+
+            if parsed.path == "/nuclei-viewer":
+                self.send_html(render_nuclei_viewer())
                 return
 
             if parsed.path == "/api/state":
