@@ -90,6 +90,109 @@ def load_json(file_path):
         return None
 
 
+def zap_counts_have_actionable_findings(counts):
+    if not isinstance(counts, dict):
+        return False
+
+    for severity in ("Critical", "High", "Medium", "Low"):
+        try:
+            if int(counts.get(severity, 0)) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def normalize_zap_dashboard_path(path_value):
+    if not path_value:
+        return None
+
+    normalized = Path(str(path_value)).as_posix().lstrip("/")
+    if normalized.startswith("07_findings/zap/"):
+        return normalized
+    if normalized.startswith("zap/"):
+        return f"07_findings/{normalized}"
+    return f"07_findings/zap/{normalized}"
+
+
+def classify_zap_alert_risk(alert):
+    if not isinstance(alert, dict):
+        return None
+
+    risk_code = str(alert.get("riskcode") or alert.get("riskCode") or "").strip()
+    if risk_code == "4":
+        return "High"
+    if risk_code == "3":
+        return "High"
+    if risk_code == "2":
+        return "Medium"
+    if risk_code == "1":
+        return "Low"
+    if risk_code == "0":
+        return "Informational"
+
+    risk_desc = str(alert.get("riskdesc") or alert.get("riskDesc") or alert.get("risk") or "").strip().lower()
+    if "informational" in risk_desc or risk_desc == "info":
+        return "Informational"
+    if "critical" in risk_desc:
+        return "High"
+    if "high" in risk_desc:
+        return "High"
+    if "medium" in risk_desc:
+        return "Medium"
+    if "low" in risk_desc:
+        return "Low"
+    return None
+
+
+def collect_actionable_zap_html_paths(scan_dir):
+    zap_dir = scan_dir / "07_findings" / "zap"
+    if not zap_dir.is_dir():
+        return set()
+
+    actionable_paths = set()
+    summary = load_json(zap_dir / "zap_summary.json") or {}
+    results = summary.get("results")
+
+    if isinstance(results, list):
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            if not zap_counts_have_actionable_findings(result.get("alerts_count")):
+                continue
+
+            relative_path = normalize_zap_dashboard_path(result.get("html_report"))
+            if relative_path:
+                actionable_paths.add(relative_path)
+
+    if actionable_paths:
+        return actionable_paths
+
+    for report_path in sorted((zap_dir / "raw_html").glob("*.html")):
+        json_path = zap_dir / "raw_json" / f"{report_path.stem}.json"
+        report_data = load_json(json_path) or {}
+
+        counts = {}
+        sites = report_data.get("site")
+        if isinstance(sites, list):
+            for site in sites:
+                if not isinstance(site, dict):
+                    continue
+                for alert in site.get("alerts", []):
+                    severity = classify_zap_alert_risk(alert)
+                    if severity == "High":
+                        counts["High"] = counts.get("High", 0) + 1
+                    elif severity == "Medium":
+                        counts["Medium"] = counts.get("Medium", 0) + 1
+                    elif severity == "Low":
+                        counts["Low"] = counts.get("Low", 0) + 1
+
+        if zap_counts_have_actionable_findings(counts):
+            actionable_paths.add(report_path.relative_to(scan_dir).as_posix())
+
+    return actionable_paths
+
+
 def iso_to_local(value):
     if not value:
         return ""
@@ -247,6 +350,7 @@ def collect_findings_files(scan_dir):
     if not findings_dir.is_dir():
         return []
 
+    actionable_zap_html_paths = collect_actionable_zap_html_paths(scan_dir)
     relative_paths = []
     nuclei_candidates = []
     for item in sorted(findings_dir.rglob("*")):
@@ -257,7 +361,9 @@ def collect_findings_files(scan_dir):
         rel_findings_path = item.relative_to(findings_dir).as_posix()
 
         if rel_findings_path.startswith("zap/"):
-            if rel_findings_path == "zap/zap_summary.txt" or rel_findings_path.startswith("zap/raw_html/"):
+            if rel_findings_path == "zap/zap_summary.txt":
+                relative_paths.append(rel_path)
+            elif rel_findings_path.startswith("zap/raw_html/") and rel_path in actionable_zap_html_paths:
                 relative_paths.append(rel_path)
             continue
 

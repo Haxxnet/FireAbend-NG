@@ -155,6 +155,8 @@ def collect_alert_items(node, items):
 
 def normalize_risk(alert):
     risk_desc = str(alert.get("riskdesc") or alert.get("riskDesc") or alert.get("risk") or "").lower()
+    if "critical" in risk_desc:
+        return "High"
     if "high" in risk_desc:
         return "High"
     if "medium" in risk_desc:
@@ -166,6 +168,7 @@ def normalize_risk(alert):
 
     risk_code = str(alert.get("riskcode") or alert.get("riskCode") or "")
     return {
+        "4": "High",
         "3": "High",
         "2": "Medium",
         "1": "Low",
