@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
+import base64
 import html
 import json
 import mimetypes
 import os
+import re
 import threading
 import webbrowser
 from datetime import datetime
@@ -25,6 +27,8 @@ LOCAL_BOOTSTRAP_JS_CANDIDATES = [
     Path("/usr/share/javascript/bootstrap5/js/bootstrap.bundle.min.js"),
     Path("/usr/share/bootstrap-html/js/bootstrap.bundle.min.js"),
 ]
+LOCAL_BOOTSTRAP_ICONS_CSS = Path(__file__).resolve().with_name("bootstrap-icons.min.css")
+LOCAL_BOOTSTRAP_ICONS_FONT = Path(__file__).resolve().with_name("bootstrap-icons.woff2")
 
 
 def pick_first_existing_path(candidates):
@@ -55,12 +59,19 @@ def resolve_dashboard_assets():
         bootstrap_js_src = BOOTSTRAP_JS
         bootstrap_js_integrity = BOOTSTRAP_JS_INTEGRITY
 
+    if LOCAL_BOOTSTRAP_ICONS_CSS.is_file() and LOCAL_BOOTSTRAP_ICONS_FONT.is_file():
+        asset_files["bootstrap-icons.min.css"] = LOCAL_BOOTSTRAP_ICONS_CSS
+        asset_files["fonts/bootstrap-icons.woff2"] = LOCAL_BOOTSTRAP_ICONS_FONT
+        bootstrap_icons_href = "/assets/bootstrap-icons.min.css"
+    else:
+        bootstrap_icons_href = BOOTSTRAP_ICONS
+
     return {
         "bootstrap_css_href": bootstrap_css_href,
         "bootstrap_css_integrity": bootstrap_css_integrity,
         "bootstrap_js_src": bootstrap_js_src,
         "bootstrap_js_integrity": bootstrap_js_integrity,
-        "bootstrap_icons_href": BOOTSTRAP_ICONS,
+        "bootstrap_icons_href": bootstrap_icons_href,
         "asset_files": asset_files,
     }
 
@@ -76,6 +87,7 @@ def parse_args():
     parser.add_argument("--browser-host", default=None, help="Host to use for the printed/opened browser URL. Defaults to the bind host.")
     parser.add_argument("--port", type=int, default=DEFAULT_DASHBOARD_PORT, help="Port to bind.")
     parser.add_argument("--open-browser", action="store_true", help="Open the dashboard in the default browser after startup.")
+    parser.add_argument("--export-static", action="store_true", help="Write a self-contained fireabend-report.html and exit.")
     return parser.parse_args()
 
 
@@ -490,7 +502,13 @@ def build_state(scan_dir):
     }
 
 
-def render_index():
+def json_for_inline_script(value):
+    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
+def render_index(static_state=None, static_job_logs=None):
+    static_state_json = json_for_inline_script(static_state)
+    static_job_logs_json = json_for_inline_script(static_job_logs or {})
     bootstrap_css_integrity_attr = (
         f' integrity="{DASHBOARD_ASSETS["bootstrap_css_integrity"]}" crossorigin="anonymous"'
         if DASHBOARD_ASSETS["bootstrap_css_integrity"]
@@ -957,6 +975,8 @@ def render_index():
 
     <script src="{DASHBOARD_ASSETS["bootstrap_js_src"]}"{bootstrap_js_integrity_attr}></script>
     <script>
+      const staticDashboardState = {static_state_json};
+      const staticJobLogs = {static_job_logs_json};
       const stateBadgeClass = {{
         pending: "text-bg-secondary",
         running: "text-bg-primary pulse",
@@ -1194,7 +1214,7 @@ def render_index():
 
         function buildArtifactHref(file) {{
           const path = String(file.relative_path || "");
-          if (path.toLowerCase().includes("/nuclei/")) {{
+          if (!staticDashboardState && path.toLowerCase().includes("/nuclei/")) {{
             return "/nuclei-viewer";
           }}
           return file.url;
@@ -1239,6 +1259,21 @@ def render_index():
       }}
 
       async function fetchState() {{
+        if (staticDashboardState) {{
+          const state = staticDashboardState;
+          document.getElementById("scanName").textContent = state.scan_name;
+          document.getElementById("scanPath").textContent = state.scan_dir;
+          document.getElementById("generatedAt").textContent = state.generated_at ? `Run summary updated: ${{state.generated_at}}` : "Run summary not written yet";
+          renderMetrics(state.counts);
+          renderJobs(state.jobs, state.running_jobs || []);
+          renderArtifacts(state.sections || []);
+          if (!selectedJobId && state.jobs.length) {{
+            selectedJobId = state.jobs[0].job_id;
+            fetchLog();
+          }}
+          return;
+        }}
+
         const response = await fetch("/api/state", {{ cache: "no-store" }});
         if (!response.ok) {{
           return;
@@ -1266,6 +1301,17 @@ def render_index():
 
         const logView = document.getElementById("logView");
         const shouldAutoScroll = logAutoScrollEnabled || isLogNearBottom(logView);
+        if (staticDashboardState) {{
+          const payload = staticJobLogs[selectedJobId] || {{ job_id: selectedJobId, path: "", content: "" }};
+          document.getElementById("selectedJobLabel").textContent = payload.path || selectedJobId;
+          logView.textContent = payload.content || "No log output recorded.";
+          if (shouldAutoScroll) {{
+            logView.scrollTop = logView.scrollHeight;
+            logAutoScrollEnabled = true;
+          }}
+          return;
+        }}
+
         const response = await fetch(`/api/job/${{encodeURIComponent(selectedJobId)}}/log?tail=250`, {{ cache: "no-store" }});
         if (!response.ok) {{
           logView.textContent = "Unable to load log.";
@@ -1334,11 +1380,63 @@ def render_index():
       }});
 
       fetchState();
-      setInterval(fetchState, 4000);
-      setInterval(fetchLog, 4000);
+      if (!staticDashboardState) {{
+        setInterval(fetchState, 4000);
+        setInterval(fetchLog, 4000);
+      }}
     </script>
   </body>
 </html>"""
+
+
+def inline_bootstrap_icons(markup):
+    css_path = DASHBOARD_ASSETS["asset_files"].get("bootstrap-icons.min.css")
+    font_path = DASHBOARD_ASSETS["asset_files"].get("fonts/bootstrap-icons.woff2")
+    if not css_path or not font_path or not css_path.is_file() or not font_path.is_file():
+        return markup
+
+    encoded_font = base64.b64encode(font_path.read_bytes()).decode("ascii")
+    font_data_url = f'data:font/woff2;base64,{encoded_font}'
+    icon_css = css_path.read_text(encoding="utf-8")
+    icon_css = re.sub(r'url\("fonts/bootstrap-icons\.woff2[^\"]*"\)', f'url("{font_data_url}")', icon_css)
+    icon_css = re.sub(r',url\("fonts/bootstrap-icons\.woff[^\"]*"\) format\("woff"\)', "", icon_css)
+    icon_tag = f'<link rel="stylesheet" href="{DASHBOARD_ASSETS["bootstrap_icons_href"]}">'
+    return markup.replace(icon_tag, f"<style>\n{icon_css}\n</style>", 1)
+
+
+def export_static_report(scan_dir, output_path=None):
+    state = build_state(scan_dir)
+    for section in state["sections"]:
+        for artifact in section["files"]:
+            artifact_path = (scan_dir / artifact["relative_path"]).resolve()
+            if scan_dir not in artifact_path.parents or not artifact_path.is_file():
+                artifact["url"] = "#"
+                continue
+            artifact["url"] = artifact_path.as_uri()
+
+    job_logs = {}
+    for job in state["jobs"]:
+        log_path = scan_dir / "00_runtime" / "logs" / f"{job['job_id']}.log"
+        job_logs[job["job_id"]] = {
+            "job_id": job["job_id"],
+            "path": str(log_path.relative_to(scan_dir)) if log_path.is_file() else "",
+            "content": tail_file(log_path, 250),
+        }
+
+    markup = render_index(static_state=state, static_job_logs=job_logs)
+    css_path = DASHBOARD_ASSETS["asset_files"].get("bootstrap.min.css")
+    js_path = DASHBOARD_ASSETS["asset_files"].get("bootstrap.bundle.min.js")
+    if css_path and css_path.is_file():
+        css_tag = f'<link href="{DASHBOARD_ASSETS["bootstrap_css_href"]}" rel="stylesheet">'
+        markup = markup.replace(css_tag, f"<style>\n{css_path.read_text(encoding='utf-8')}\n</style>", 1)
+    if js_path and js_path.is_file():
+        js_tag = f'<script src="{DASHBOARD_ASSETS["bootstrap_js_src"]}"></script>'
+        markup = markup.replace(js_tag, f"<script>\n{js_path.read_text(encoding='utf-8')}\n</script>", 1)
+
+    markup = inline_bootstrap_icons(markup)
+    destination = output_path or (scan_dir / "fireabend-report.html")
+    destination.write_text(markup, encoding="utf-8")
+    return destination
 
 
 def render_nuclei_viewer():
@@ -2816,6 +2914,11 @@ def main():
     scan_dir = Path(args.scan_dir).resolve()
     if not scan_dir.is_dir():
         raise SystemExit(f"Scan directory not found: {scan_dir}")
+
+    if args.export_static:
+        report_path = export_static_report(scan_dir)
+        print(f"[dashboard] exported static report to {report_path}", flush=True)
+        return
 
     handler = build_handler(scan_dir)
     server = ThreadingHTTPServer((args.host, args.port), handler)

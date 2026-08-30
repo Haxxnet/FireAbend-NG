@@ -9,16 +9,16 @@ info:
   reference:
     - https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Javascript_Management_Cheat_Sheet.html#subresource-integrity
     - https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+  classification:
+    cwe-id: CWE-353
   metadata:
     max-request: 1
   tags: compliance,js,css,sri,misconfig,vuln
 
 http:
-  - raw:
-      - |
-        GET / HTTP/1.1
-        Host: {{Hostname}}
-
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
     redirects: true
     max-redirects: 5
 
@@ -45,4 +45,4 @@ http:
         attribute: href
         xpath:
           - "//link[@rel='stylesheet' and contains(@href, '//') and (not(@integrity) or not(matches(translate(@integrity, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ+/-=', 'abcdefghijklmnopqrstuvwxyz+/-='), '^sha(256|384|512)-')))]"
-# digest: 4b0a00483046022100f78fa99ea25519456a2c84aef0c7da1f9b40c3b637009557bf0aa5ffe2784d670221008a4f6c890bc9cb2d30b346cd11134a7bccf49a02cc06364b14de80c1819df61f:922c64590222798bb761d5b6d8e72950
+# digest: 490a00463044021f63e08858895b3515d836088cf04f75785353b95b09030504685489a941f701022100e90cf38982c35a031c20ce5fb862cc944b09f82cd78c7f69d82504661c37326b:922c64590222798bb761d5b6d8e72950
