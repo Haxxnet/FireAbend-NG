@@ -39,10 +39,13 @@ usage: fireabend.py [-h] [--target <host> | --targets <file>]
                     [--disable-fireabend-update-check]
                     [--disable-nuclei-template-update-check]
                     [--enable-nuclei-engine-update-check] [--dashboard]
-                    [--no-dashboard] [--resume <scan-dir>] [--disable-udp]
-                    [--disable-zap] [--disable-zap-image-check-pull]
-                    [--zap-spider-minutes <mins>]
-                    [--zap-passive-wait-seconds <secs>]
+                    [--no-dashboard] [--dashboard-host <host>]
+                    [--resume <scan-dir>] [--disable-udp]
+                    [--disable-http-headers] [--disable-eyewitness]
+                    [--disable-testssl] [--disable-nuclei] [--disable-zap]
+                    [--disable-ssh-audit] [--disable-ike-audit]
+                    [--disable-zap-image-check-pull]
+                    [--zap-spider-minutes <mins>] [--zap-passive-wait-seconds <secs>]
                     [--zap-max-minutes <mins>] [--check]
 
 options:
@@ -73,12 +76,30 @@ options:
   --dashboard           Start a local dashboard server for the current scan
                         and open it in the browser (default)
   --no-dashboard        Do not start the local dashboard server automatically
+  --dashboard-host <host>
+                        Dashboard bind host; use 127.0.0.1 by default or
+                        0.0.0.0 to allow remote access
   --resume, --resume-scan-dir <scan-dir>
                         Resume an existing FireAbend scan directory and rerun
                         unfinished jobs
   --disable-udp, -dudp  Disable nmap udp scanning
+  --disable-http-headers, -dhh
+                        Disable HTTP response header analysis with shcheck
+  --disable-eyewitness, -deye
+                        Disable EyeWitness web screenshot enumeration
+  --disable-testssl, -dts
+                        Disable testssl.sh TLS scanning and XLSX conversion
+  --disable-nuclei, -dnuc
+                        Disable nuclei vulnerability scanning and related
+                        update jobs
   --disable-zap, -dzap  Disable OWASP ZAP baseline scanning of discovered
                         http(s) urls
+  --disable-ssh-audit, -dssa
+                        Disable ssh-audit processing of discovered SSH
+                        services
+  --disable-ike-audit, -dika
+                        Disable IKESS processing of discovered IKE/VPN
+                        services
   --disable-zap-image-check-pull
                         Do not inspect or pull the OWASP ZAP Docker image
                         before scanning; useful for offline runs
@@ -92,7 +113,6 @@ options:
                         Maximum minutes to wait for each OWASP ZAP scan;
                         default is 3
   --check               Sanity check, print binary paths and defaults
-
 ````
 
 ## 🐍 Native Python
