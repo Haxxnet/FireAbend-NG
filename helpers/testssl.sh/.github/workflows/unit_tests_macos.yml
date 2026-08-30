@@ -1,0 +1,61 @@
+# "paths-ignore" should be in line with unit_tests_ubuntu.yml
+# and shellcheck.yml
+---
+name: CI run MacOS
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'utils/**'
+      - 'doc/**'
+      - 'bin/**'
+      - '**.md'
+      - '**.1'
+      - '**.html'
+      - '**.pem'
+      - '**.pdf'
+      - '**.yml'
+      - 'LICENSE'
+      - 'Dockerfile'
+      - 'Dockerfile.alpine'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+
+    name: PoC unit test on MacOS
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      - name: Set up system (perl, curl is installed already)
+        run: |
+          brew install socat jsonlint cpanminus
+          printf "%s\n" "----------"
+          mv -v /opt/homebrew/bin/openssl /opt/homebrew/bin/openssl.NOPE
+          printf "%s\n" "----------"
+          perl -V
+          printf "%s\n" "----------"
+          curl --version
+          printf "%s\n" "----------"
+          openssl version -a
+          printf "%s\n" "----------"
+          bash --version
+          printf "%s\n" "----------"
+          echo $PATH
+          printf "%s\n" "----------"
+
+      - name: Install perl modules
+        run: |
+          cpanm --notest Test::More
+          cpanm --notest Data::Dumper
+          cpanm --notest JSON
+          cpanm --notest Text::Diff
+          cpanm --notest IPC::Run3
+
+      - name: run it
+        run: |
+          prove -v t 2>&1

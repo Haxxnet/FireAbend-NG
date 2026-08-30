@@ -8,7 +8,7 @@ use Test::More;
 
 my $tests = 0;
 my $fileout="";
-# Blacklists we use to trigger an error:
+# Patterns used to trigger an error:
 my $error_regexp1='(syntax|parse) (e|E)rror';
 my $error_regexp2='testssl.sh: line';
 my $error_regexp3='bash: warning';
@@ -17,27 +17,34 @@ my $error_regexp5='(syntax error|unexpected token)';
 my $good_regexp='free software([\s\S]*)USAGE w/o ANY WARRANTY([\s\S]*)OWN RISK([\s\S]*)Using([\s\S]*)ciphers([\s\S]*)built([\s\S]*)platform';
 
 printf "\n%s\n", "Testing whether just calling \"./testssl.sh --banner\" produces no error ...";
-$fileout = `timeout 10 bash ./testssl.sh --banner 2>&1`;
+$fileout = `bash ./testssl.sh --banner 2>&1`;
 my $retval=$?;
 
+#1
 unlike($fileout, qr/$error_regexp1/, "regex 1");
 $tests++;
 
+#2
 unlike($fileout, qr/$error_regexp2/, "regex 2");
 $tests++;
 
+#3
 unlike($fileout, qr/$error_regexp3/, "regex 3");
 $tests++;
 
+#4
 unlike($fileout, qr/$error_regexp4/, "regex 4");
 $tests++;
 
+#5
 unlike($fileout, qr/$error_regexp5/, "regex 5");
 $tests++;
 
+#6
 like($fileout, qr/$good_regexp/, "regex positive");
 $tests++;
 
+#7
 is($retval, 0, "return value should be equal zero: \"$retval\"");
 $tests++;
 

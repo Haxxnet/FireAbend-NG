@@ -1,6 +1,6 @@
 
 ## NAME
-   testssl.sh -- check encryption of SSL/TLS servers
+   testssl.sh -- check TLS/SSL encryption of servers
 
 ## SYNOPSIS
 
@@ -36,9 +36,9 @@ linked OpenSSL binaries for major operating systems are supplied in `./bin/`.
 
 `testssl.sh URI` as the default invocation does the so-called default run which does a number of checks and puts out the results colorized (ANSI and termcap) on the screen. It does every check listed below except `-E` which are (order of appearance):
 
-0) displays a banner (see below), does a DNS lookup also for further IP addresses and does for the returned IP address a reverse lookup. Last but not least a service check is being done.
+0) displays a banner (see below), does a DNS lookup also for further IP addresses and does for the returned IP address a reverse lookup. Also the so called DNS HTTPS record is being queried and displayed (for the first IP only). Last but not least a service check is being done.
 
-1) SSL/TLS protocol check
+1) SSL/TLS protocol check plus QUIC and ALPN check
 
 2) standard cipher categories
 
@@ -58,6 +58,7 @@ linked OpenSSL binaries for major operating systems are supplied in `./bin/`.
 
 10) rating
 
+If a target FQDN has multiple IPv4 and/or multiple IPv6 addresses, it scans all IPs with the specified options or using the default run - unless specified otherwise, see `--ip`, `-4` and `-6`. IPv6 connectivity is automagically checked. If there's noch such thing you will see a banner *Testing all **IPv4** addresses* and all IPv6 addresses will appear in round brackets.
 
 
 ## OPTIONS AND PARAMETERS
@@ -105,9 +106,9 @@ Please note that `fname` has to be in Unix format. DOS carriage returns won't be
 `--warnings <batch|off>`.  The warnings parameter determines how testssl.sh will deal with situations where user input normally will be necessary. There are two options. `batch` doesn't wait for a confirming keypress when a client- or server-side problem is encountered. As of 3.0 it just then terminates the particular scan.  This is automatically chosen for mass testing (`--file`). `off` just skips the warning, the confirmation but continues the scan, independent whether it makes sense or not. Please note that there are conflicts where testssl.sh will still ask for confirmation which are the ones which otherwise would have a drastic impact on the results. Almost any other decision will be made in the future as a best guess by testssl.sh.
 The same can be achieved by setting the environment variable `WARNINGS`.
 
-`--connect-timeout <seconds>`  This is useful for socket TCP connections to a node. If the node does not complete a TCP handshake (e.g. because it is down or behind a firewall or there's an IDS or a tarpit) testssl.sh may usually hang for around 2 minutes or even much more. This parameter instructs testssl.sh to wait at most `seconds` for the handshake to complete before giving up. This option only works if your OS has a timeout binary installed. CONNECT_TIMEOUT is the corresponding environment variable.
+`--socket-timeout <seconds>`  This is useful for socket TCP connections to a node. If the node does not complete a TCP handshake (e.g. because it is down or behind a firewall or there's an IDS or a tarpit) testssl.sh may usually hang for around 2 minutes or even much more. This parameter instructs testssl.sh to wait at most `seconds` for the handshake to complete before giving up. This option only works if your OS has a timeout binary installed. SOCKET_TIMEOUT is the corresponding environment variable. This doesn't work on Macs out of the box.
 
-`--openssl-timeout <seconds>` This is especially useful for all connects using openssl and practically useful for mass testing. It avoids the openssl connect to hang for ~2 minutes. The expected parameter `seconds` instructs testssl.sh to wait before the openssl connect will be terminated. The option is only available if your OS has a timeout binary installed. As there are different implementations of `timeout`: It automatically calls the binary with the right parameters. OPENSSL_TIMEOUT is the equivalent environment variable.
+`--openssl-timeout <seconds>` This is especially useful for all connects using openssl and practically useful for mass testing. It avoids the openssl connect to hang for ~2 minutes. The expected parameter `seconds` instructs testssl.sh to wait before the openssl connect will be terminated. The option is only available if your OS has a timeout binary installed. As there are different implementations of `timeout`: It automatically calls the binary with the right parameters. OPENSSL_TIMEOUT is the equivalent environment variable. This doesn't work on Macs out of the box.
 
 `--basicauth <user:pass>` This can be set to provide HTTP basic auth credentials which are used during checks for security headers. BASICAUTH is the ENV variable you can use instead.
 
@@ -124,15 +125,17 @@ The same can be achieved by setting the environment variable `WARNINGS`.
 
 `--mx <domain|host>` tests all MX records (STARTTLS on port 25) from high to low priority, one after the other.
 
-`--ip <ip>` tests either the supplied IPv4 or IPv6 address instead of resolving host(s) in `<URI>`. IPv6 addresses need to be supplied in square brackets. `--ip=one` means: just test the first A record DNS returns (useful for multiple IPs). If `-6` and  `--ip=one` was supplied an AAAA record will be picked if available. The ``--ip`` option might be also useful if you want to resolve the supplied hostname to a different IP, similar as if you would edit `/etc/hosts` or `/c/Windows/System32/drivers/etc/hosts`. `--ip=proxy` tries a DNS resolution via proxy. `--ip=proxy` plus `--nodns=min` is useful for situations with no local DNS as there'll be no DNS timeouts when trying to resolve CAA, TXT and MX records.
+`--ip <ip>` tests either the supplied IPv4 or IPv6 address instead of resolving host(s) in `<URI>`. IPv6 addresses need to be supplied in square brackets. `--ip=one` means: just test the first A record DNS returns (useful for multiple IPs). If `-6` and  `--ip=one` was supplied an AAAA record will be picked if available. The `--ip` option might be also useful if you want to resolve the supplied hostname to a different IP, similar as if you would edit `/etc/hosts` or `/c/Windows/System32/drivers/etc/hosts`. `--ip=proxy` tries a DNS resolution via proxy. `--ip=proxy` plus `--nodns=min` is useful for situations with no local DNS as there'll be no DNS timeouts when trying to resolve CAA, TXT and MX records.
 
-`--proxy <host>:<port>`  does ANY check via the specified proxy. `--proxy=auto` inherits the proxy setting from the environment. The hostname supplied will be resolved to the first A record. In addition if you want lookups via proxy you can specify `DNS_VIA_PROXY=true`. OCSP revocation checking (`-S --phone-out`) is not supported by OpenSSL via proxy. As supplying a proxy is an indicator for port 80 and 443 outgoing being blocked in your network an OCSP revocation check won't be performed. However if `IGN_OCSP_PROXY=true` has been supplied it will be tried directly. Authentication to the proxy is not supported. Proxying via IPv6 addresses is not possible, no HTTPS or SOCKS proxy is supported.
+`--proxy <host>:<port>`  does ANY check via the specified proxy. `--proxy=auto` inherits the proxy setting from the environment. Any hostname supplied will be resolved to the first A record, if it does not exist the AAAA record is used. IPv4 and IPv6 addresses can be passed too, the latter *also* with square bracket notation. Please note that you need a newer OpenSSL or LibreSSL version for IPv6 proxy functionality. In addition if you want lookups via proxy you can specify `DNS_VIA_PROXY=true`. OCSP revocation checking (`-S --phone-out`) is not supported by OpenSSL via proxy. As supplying a proxy is an indicator for port 80 and 443 outgoing being blocked in your network an OCSP revocation check won't be performed. However if `IGN_OCSP_PROXY=true` has been supplied it will be tried directly. Authentication to the proxy is not supported, also no HTTPS or SOCKS proxy.
 
-`-6` does (also) IPv6 checks. Please note that testssl.sh doesn't perform checks on an IPv6 address automatically, because of two reasons: testssl.sh does no connectivity checks for IPv6 and it cannot determine reliably whether the OpenSSL binary you're using has IPv6 s_client support. `-6` assumes both is the case. If both conditions are met and you in general prefer to test for IPv6 branches as well you can add `HAS_IPv6` to your shell environment. Besides the OpenSSL binary supplied IPv6 is known to work with vanilla OpenSSL >= 1.1.0 and older versions >=1.0.2 in RHEL/CentOS/FC and Gentoo.
+`-6` scans only IPv6 addresses of the target. Besides the OpenSSL binary supplied IPv6 is known to work with vanilla OpenSSL >= 1.1.0 and older versions >=1.0.2 in RHEL/CentOS/FC and Gentoo. Scans are somewhat in line with tools like curl or wget, i.e. if there's an IPv6 address of the target which can be reached, it just uses them. If you don't want this behavior, you need to supply `-4.`
 
-`--ssl-native`  Instead of using a mixture of bash sockets and a few openssl s_client connects, testssl.sh uses the latter (almost) only. This is faster but provides less accurate results, especially for the client simulation and for cipher support. For all checks you will see a warning if testssl.sh cannot tell if a particular check cannot be performed. For some checks however you might end up getting false negatives without a warning. Thus it is not recommended to use. It should only be used if you prefer speed over accuracy or you know that your target has sufficient overlap with the protocols and cipher provided by your openssl binary.
+`-4` scans only IPv4 addresses of the target, IPv6 addresses of the target won't be scanned.
 
-`--openssl <path_to_openssl>`           testssl.sh tries very hard to find automagically the binary supplied (where the tree of testssl.sh resides, from the directory where testssl.sh has been started from, etc.). If all that doesn't work it falls back to openssl supplied from the OS (`$PATH`). With this option you can point testssl.sh to your binary of choice and override any internal magic to find the openssl binary. (Environment preset via `OPENSSL=<path_to_openssl>`).
+`--ssl-native`  Instead of using a mixture of bash sockets and a few `openssl s_client connect`s, testssl.sh uses the latter (almost) only. This is faster but doesn't provides accurate results, especially for the client simulation and for cipher support. Thus this is not recommended anymore. For all checks you will see a warning if testssl.sh cannot tell if a particular check cannot be performed. For some checks however you might end up getting false negatives without a warning. Thus it is not recommended to use. It should only be used if you prefer speed over accuracy or you know that your target has sufficient overlap with the protocols and cipher provided by your openssl binary.
+
+`--openssl <path_to_openssl>` testssl.sh tries first very hard to find the binary supplied (where the tree of testssl.sh resides, from the directory where testssl.sh has been started from, etc.). If all that doesn't work it falls back to openssl supplied from the OS (`$PATH`). With this option you can point testssl.sh to your binary of choice and override any internal magic to find the openssl binary. (Environment preset via `OPENSSL=<path_to_openssl>`). Depending on your test parameters it could be faster to pick the OpenSSL version which has a bigger overlap in terms of ciphers protocols with the target. Also, when testing a modern server, OpenSSL 3.X is faster than older OpenSSL versions, or on MacOS 18, as opposed to the provided LibreSSL version.
 
 
 ### TUNING OPTIONS
@@ -149,10 +152,11 @@ The same can be achieved by setting the environment variable `WARNINGS`.
 
 `--ids-friendly` is a switch which may help to get a scan finished which otherwise would be blocked by a server side IDS. This switch skips tests for the following vulnerabilities: Heartbleed, CCS Injection, Ticketbleed and ROBOT. The environment variable OFFENSIVE set to false will achieve the same result. Please be advised that as an alternative or as a general approach you can try to apply evasion techniques by changing the variables USLEEP_SND and / or USLEEP_REC and maybe MAX_WAITSOCK.
 
-`--phone-out` Checking for revoked certificates via CRL and OCSP is not done per default. This switch instructs testssl.sh to query external -- in a sense of the current run -- URIs. By using this switch you acknowledge that the check might have privacy issues, a download of several megabytes (CRL file) may happen and there may be network connectivity problems while contacting the endpoint which testssl.sh doesn't handle. PHONE_OUT is the environment variable for this which needs to be set to true if you want this.
+`--phone-out` Checking for revoked certificates via CRL and OCSP, as well as the HSTS preload list status via hstspreload.org, is not done per default. This switch instructs testssl.sh to query external -- in a sense of the current run -- URIs. By using this switch you acknowledge that the check might have privacy issues, a download of several megabytes (CRL file) may happen and there may be network connectivity problems while contacting the endpoint which testssl.sh doesn't handle. PHONE_OUT is the environment variable for this which needs to be set to true if you want this.
 
 `--add-ca <CAfile>` enables you to add your own CA(s) in PEM format for trust chain checks. `CAfile` can be a directory containing files with a \.pem extension, a single file or multiple files as a comma separated list of root CAs. Internally they will be added during runtime to all CA stores. This is (only) useful for internal hosts whose certificates are issued by internal CAs. Alternatively ADDTL_CA_FILES is the environment variable for this.
 
+`--rating-only` makes testssl.sh do the bare minimum to allow rating to succeed. See RATING for more
 
 ### SINGLE CHECK OPTIONS
 
@@ -175,7 +179,7 @@ Any single check switch supplied as an argument prevents testssl.sh from doing a
 
 `-f, --fs, --nsa, --forward-secrecy` Checks robust forward secrecy key exchange. "Robust" means that ciphers having intrinsic severe weaknesses like Null Authentication or Encryption, 3DES and RC4 won't be considered here. There shouldn't be the wrong impression that a secure key exchange has been taking place and everything is fine when in reality the encryption sucks. Also this section lists the available elliptical curves and Diffie Hellman groups, as well as FFDHE groups (TLS 1.2 and TLS 1.3).
 
-`-p, --protocols`  checks TLS/SSL protocols SSLv2, SSLv3, TLS 1.0 through TLS 1.3 and for HTTP: SPDY (NPN) and ALPN, a.k.a. HTTP/2. For TLS 1.3 several drafts (from 18 on) and final are supported and being tested for. Note the supplied openssl-bad version doesn't support TLS 1.3 . As the check for TLS 1.3 will be done in sockets this normally does not pose a problem. However if a TLS-1.3-only host is encountered and to have a complete test coverage (e.g. header checks) `/usr/bin/openssl` (or the content of `OPENSSL2`) is checked for existence and support of TLS 1.3 and if those tests succeeded it will be switched to this binary. A message will notify you.
+`-p, --protocols` checks every SSL/TLS protocols: SSLv2, SSLv3, TLS 1.0 through TLS 1.3. And for HTTP also QUIC (HTTP/3), SPDY (NPN) and ALPN (HTTP/2). For TLS 1.3 the final version and several drafts (from 18 on) are tested. QUIC needs OpenSSL >= 3.2 which can be automatically picked up when in `/usr/bin/openssl` (or when defined environment variable OPENSSL2). If a TLS-1.3-only host is encountered and the openssl-bad version is used testssl.sh will e.g. for HTTP header checks switch to `/usr/bin/openssl` (or when defined via ENV to OPENSSL2). Also this will be tried for the QUIC check. You will get an additional message if the DNS HTTPS Resource Record matches the QUIC finding. Also if there are negative consequences (h3 advertised but not offered).
 
 `-P, --server-preference, --preference`  displays the servers preferences: cipher order, with used openssl client: negotiated protocol and cipher. If there's a cipher order enforced by the server it displays it for each protocol (openssl+sockets). If there's not, it displays instead which ciphers from the server were picked with each protocol.
 
@@ -184,6 +188,7 @@ Any single check switch supplied as an argument prevents testssl.sh from doing a
 * Available TLS extensions,
 * TLS ticket + session ID information/capabilities,
 * session resumption capabilities,
+* TLS 1.3 early data, a.k.a 0-RTT
 * Time skew relative to localhost (most server implementations return random values).
 * Several certificate information
     - signature algorithm,
@@ -208,6 +213,7 @@ Also for multiple server certificates are being checked for as well as for the c
 `-h, --header, --headers`       if the service is HTTP (either by detection or by enforcing via `--assume-http`. It tests several HTTP headers like
 
 * HTTP Strict Transport Security (HSTS)
+    - HSTS preload list status (when `--phone-out` supplied)
 * HTTP Public Key Pinning (HPKP)
 * Server banner
 * HTTP date+time
@@ -228,7 +234,7 @@ Also for multiple server certificates are being checked for as well as for the c
 
 ### VULNERABILITIES
 
-`-U, --vulnerable, --vulnerabilities` Just tests all (of the following) vulnerabilities. The environment variable `VULN_THRESHLD` determines after which value a separate headline for each vulnerability is being displayed. Default is `1` which means if you check for two vulnerabilities, only the general headline for vulnerabilities section is displayed -- in addition to the vulnerability and the result. Otherwise each vulnerability or vulnerability section gets its own headline in addition to the output of the name of the vulnerability and test result. A vulnerability section is comprised of more than one check, e.g. the renegotiation vulnerability check has two checks, so has Logjam.
+`-U, --vulnerable, --vulnerabilities` Just tests all (of the following) vulnerabilities.
 
 `-H, --heartbleed`              Checks for Heartbleed, a memory leakage in openssl. Unless the server side doesn't support the heartbeat extension it is likely that this check runs into a timeout. The seconds to wait for a reply can be adjusted with `HEARTBLEED_MAX_WAITSOCK`. 8 is the default.
 
@@ -236,9 +242,11 @@ Also for multiple server certificates are being checked for as well as for the c
 
 `-T, --ticketbleed`             Checks for Ticketbleed memory leakage in BigIP loadbalancers.
 
-`--BB, --robot`          Checks for vulnerability to ROBOT / (*Return Of Bleichenbacher's Oracle Threat*) attack.
+`--OP, --opossum`               Checks for HTTP to HTTPS upgrade vulnerability named Opossum.
 
-`--SI, --starttls-injection`          Checks for STARTTLS injection vulnerabilities (SMTP, IMAP, POP3 only). `socat` and OpenSSL >=1.1.0 is needed.
+`--BB, --robot`                 Checks for vulnerability to ROBOT / (*Return Of Bleichenbacher's Oracle Threat*) attack. The predefined timeout of 5 seconds can be changed with the environment variable `ROBOT_TIMEOUT`.
+
+`--SI, --starttls-injection`    Checks for STARTTLS injection vulnerabilities (SMTP, IMAP, POP3 only). `socat` and OpenSSL >=1.1.0 is needed.
 
 `-R, --renegotiation`           Tests renegotiation vulnerabilities. Currently there's a check for *Secure Renegotiation* and for *Secure Client-Initiated Renegotiation*. Please be aware that vulnerable servers to the latter can likely be DoSed very easily (HTTP). A check for *Insecure Client-Initiated Renegotiation* is not yet implemented.
 
@@ -264,7 +272,7 @@ Also for multiple server certificates are being checked for as well as for the c
 
 `-WS, --winshock`               Checks for Winshock vulnerability. It tests for the absence of a lot of ciphers, some TLS extensions and ec curves which were introduced later in Windows. In the end the server banner is being looked at.
 
-`-4, --rc4, --appelbaum`        Checks which RC4 stream ciphers are being offered.
+`--rc4, --appelbaum`        Checks which RC4 stream ciphers are being offered.
 
 
 ### OUTPUT OPTIONS
@@ -386,6 +394,7 @@ Except the environment variables mentioned above which can replace command line 
 * MAX_WAITSOCK: It instructs testssl.sh to wait until the specified time before declaring a socket connection dead. Don't change this unless you're absolutely sure what you're doing. Value is in seconds.
 * CCS_MAX_WAITSOCK Is the similar to above but applies only to the CCS handshakes, for both of the two the two CCS payload. Don't change this unless you're absolutely sure what you're doing. Value is in seconds.
 * HEARTBLEED_MAX_WAITSOCK  Is the similar to MAX_WAITSOCK but applies only to the ServerHello after sending the Heartbleed payload. Don't change this unless you're absolutely sure what you're doing. Value is in seconds.
+* ROBOT_TIMEOUT  is similar to above and applies to the ROBOT check.
 * MEASURE_TIME_FILE For seldom cases when you don't want the scan time to be included in the output you can set this to false.
 * STARTTLS_SLEEP is per default set to 10 (seconds). That's the value testssl.sh waits for a string in the STARTTLS handshake before giving up.
 * MAX_PARALLEL is the maximum number of tests to run in parallel in parallel mass testing mode. The default value of 20 may be made larger on systems with faster processors.
@@ -398,10 +407,11 @@ Except the environment variables mentioned above which can replace command line 
 * HPKP_MIN is preset to 30 (days). If you want warnings sooner or later for HTTP Public Key Pinning you can change this
 * DAYS2WARN1 is the first threshold when you'll be warning of a certificate expiration of a host, preset to 60 (days). For Let's Encrypt this value will be divided internally by 2.
 * DAYS2WARN2 is the second threshold when you'll be warning of a certificate expiration of a host, preset to 30 (days). For Let's Encrypt this value will be divided internally by 2.
+* DAYS_VALID_SHORTLIVED is preset to 10 (days). Certificates with a total validity period (notAfter - notBefore) of this many days or fewer are treated as intentionally short-lived (see "Short-lived Subscriber Certificate" in the CA/Browser Forum Baseline Requirements, e.g. Let's Encrypt's 6-day profile). They are not being warned of for their short lifespan. A warning is issued only when less than 24 hours of validity are left, and only for certificates whose total validity period is more than 24 hours.
 * TESTSSL_INSTALL_DIR is the derived installation directory of testssl.sh. Relatively to that the `bin` and mandatory `etc` directory will be looked for.
 * CA_BUNDLES_PATH: If you have an own set of CA bundles or you want to point testssl.sh to a specific location of a CA bundle, you can use this variable to set the directory which testssl.sh will use. Please note that it overrides completely the builtin path of testssl.sh which means that you will only test against the bundles you point to. Also you might want to use `~/utils/create_ca_hashes.sh` to create the hashes for HPKP.
-* MAX_SOCKET_FAIL: A number which tells testssl.sh how often a TCP socket connection may fail before the program gives up and terminates. The default is 2. You can increase it to a higher value if you frequently see a message like *Fatal error: repeated openssl s_client connect problem, doesn't make sense to continue*.
-* MAX_OSSL_FAIL: A number which tells testssl.sh how often an OpenSSL s_client connect may fail before the program gives up and terminates. The default is 2. You can increase it to a higher value if you frequently see a message like *Fatal error: repeated TCP connect problems, giving up*.
+* MAX_SOCKET_FAIL: A number which tells testssl.sh how often a TCP socket connection may fail before the program gives up and terminates. The default is 2. You can increase it to a higher value if you frequently see a message like *Fatal error: repeated TCP connect problems, giving up*.
+* MAX_OSSL_FAIL: A number which tells testssl.sh how often an OpenSSL s_client connect may fail before the program gives up and terminates. The default is 2. You can increase it to a higher value if you frequently see a message like *Fatal error: repeated openssl s_client connect problem, doesn't make sense to continue*.
 * MAX_HEADER_FAIL: A number which tells testssl.sh how often a HTTP GET request over OpenSSL may return an empty file before the program gives up and terminates. The default is 3. Also here you can increase the threshold when you spot messages like *Fatal error: repeated HTTP header connect problems, doesn't make sense to continue*.
 * OPENSSL2 can be used to supply an alternative openssl version. This only makes sense if you want to amend the supplied version in `bin/` which lacks TLS 1.3 support with a version which doesn not and is not in `/usr/bin/openssl`.
 * OSSL_SHORTCUT should be set to false when you run interactively and don't want to switch automatically to `/usr/bin/openssl` (`OPENSSL2`) if you encounter a TLS 1.3-only host.
@@ -442,7 +452,7 @@ set_grade_warning "Documentation is always right"
 
 #### Implementing a new check which contains grade caps
 
-When implementing a new check (be it vulnerability or not) that sets grade caps, the `set_rating_state()` has to be updated (i.e. the `$do_mycheck` variable-name has to be added to the loop, and `$nr_enabled` if-statement has to be incremented)
+When implementing a new check (be it vulnerability or not) that sets grade caps, the `set_rating_state()` has to be updated (i.e. the `$do_mycheck` variable-name has to be added to the loop, and `$nr_enabled` if-statement has to be incremented), and the `--rating-only` switch statement needs to have `$do_mycheck=true` added
 
 The `set_rating_state()` automatically disables rating, if all the required checks are *not* enabled.
 This is to prevent giving out a misleading or wrong grade.
@@ -490,6 +500,7 @@ Please note that for plain TLS-encrypted ports you must not specify the protocol
 
 * RFC 2246: The TLS Protocol Version 1.0
 * RFC 2595: Using TLS with IMAP, POP3 and ACAP
+* RFC 2817: Upgrading to TLS Within HTTP/1.1
 * RFC 2818: HTTP Over TLS
 * RFC 2830: Lightweight Directory Access Protocol (v3): Extension for Transport Layer Security
 * RFC 3207: SMTP Service Extension for Secure SMTP over Transport Layer Security
@@ -519,9 +530,15 @@ Please note that for plain TLS-encrypted ports you must not specify the protocol
 * RFC 7919: Negotiated Finite Field Diffie-Hellman Ephemeral Parameters for Transport Layer Security
 * RFC 8143: Using Transport Layer Security (TLS) with Network News Transfer Protocol (NNTP)
 * RFC 8446: The Transport Layer Security (TLS) Protocol Version 1.3
+* RFC 8470: Using Early Data in HTTP
 * RFC 8701: Applying Generate Random Extensions And Sustain Extensibility (GREASE) to TLS Extensibility
+* RFC 9000: QUIC: A UDP-Based Multiplexed and Secure Transport
+* RFC 9460: Service Binding and Parameter Specification via the DNS (SVCB and HTTPS Resource Records)
 * W3C CSP: Content Security Policy Level 1-3
 * TLSWG Draft: The Transport Layer Security (TLS) Protocol Version 1.3
+* FIPS 203: Module-Lattice-Based Key-Encapsulation Mechanism Standard
+
+[More RFCs](ihttps://www.rfc-editor.org/search/rfc_search_detail.php?title=TLS&page=All) might be applicable.
 
 
 ## EXIT STATUS
@@ -542,14 +559,13 @@ Please note that for plain TLS-encrypted ports you must not specify the protocol
 * 252 (ERR_FNAMEPARSE)  Input file couldn't be parsed
 * 253 (ERR_FCREATE)     Output file couldn't be created
 * 254 (ERR_CMDLINE)     Cmd line couldn't be parsed
-* 255 (ERR_BASH)       Bash version incorrect
+* 255 (ERR_BASH)        Bash version incorrect
 
 ## FILES
 
 **etc/\*pem**               are the certificate stores from Apple, Linux, Mozilla Firefox, Windows and Java.
 
 **etc/client-simulation.txt**  contains client simulation data.
-
 
 **etc/cipher-mapping.txt**  provides a mandatory file with mapping from OpenSSL cipher suites names to the ones from IANA / used in the RFCs.
 
@@ -587,4 +603,4 @@ Probably. Current known ones and interface for filing new ones: https://testssl.
 
 ## SEE ALSO
 
-`ciphers`(1), `openssl`(1), `s_client`(1), `x509`(1), `verify`(1), `ocsp`(1), `crl`(1), `bash`(1) and the websites https://testssl.sh/ and https://github.com/drwetter/testssl.sh/ .
+`ciphers`(1), `openssl`(1), `s_client`(1), `x509`(1), `verify`(1), `ocsp`(1), `crl`(1), `bash`(1) and the websites https://testssl.sh/ and https://github.com/testssl/testssl.sh/ .

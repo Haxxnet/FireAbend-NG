@@ -45,3 +45,11 @@
       0x01,0x02 -   ffdhe4096   ffdhe4096
       0x01,0x03 -   ffdhe6144   ffdhe6144
       0x01,0x04 -   ffdhe8192   ffdhe8192
+      0x02,0x00 -   MLKEM512    MLKEM512
+      0x02,0x01 -   MLKEM768    MLKEM768
+      0x02,0x02 -   MLKEM1024   MLKEM1024
+      0x11,0xeb -   SecP256r1MLKEM768  SecP256r1MLKEM768
+      0x11,0xec -   X25519MLKEM768  X25519MLKEM768
+      0x11,0xed -   SecP384r1MLKEM1024  SecP384r1MLKEM1024
+      0x11,0xee -   curveSM2MLKEM768  curveSM2MLKEM768
+      0x63,0x99 -   X25519Kyber768Draft00  X25519Kyber768Draft00

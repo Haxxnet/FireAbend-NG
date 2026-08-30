@@ -69,7 +69,7 @@ testv6_patch() {
      else
           echo
           echo "no IPv6 patch (Fedora) detected!!  -- Press ^C and dl & apply from"
-          echo "https://github.com/drwetter/testssl.sh/blob/master/bin/fedora-dirk-ipv6.diff"
+          echo "https://github.com/testssl/testssl.sh/blob/master/bin/fedora-dirk-ipv6.diff"
           echo "or press any key to ignore"
           echo
           read a

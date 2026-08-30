@@ -1,0 +1,67 @@
+# "paths-ignore" should be in line with unit_tests_macos.yml
+# and shellcheck.yml
+---
+name: CI run Ubuntu
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'utils/**'
+      - 'doc/**'
+      - 'bin/**'
+      - '**.md'
+      - '**.1'
+      - '**.html'
+      - '**.pem'
+      - '**.pdf'
+      - '**.yml'
+      - 'LICENSE'
+      - 'Dockerfile'
+      - 'Dockerfile.alpine'
+
+permissions:
+  contents: read
+
+# see https://github.com/shogo82148/actions-setup-perl
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ['ubuntu-24.04']
+        perl: ['5.38']
+    name: Unit test on ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up perl
+        uses: shogo82148/actions-setup-perl@v1.43.1
+        with:
+          perl-version: ${{ matrix.perl }}
+
+      - name: Install OS dependencies
+        run: |
+          sudo apt install dnsutils jsonlint
+          printf "%s\n" "----------"
+          perl -V
+          printf "%s\n" "----------"
+          curl --version
+          printf "%s\n" "----------"
+          openssl version -a
+          printf "%s\n" "----------"
+          bash --version
+          printf "%s\n" "----------"
+          echo $PATH
+          printf "%s\n" "----------"
+
+      - name: Install perl modules
+        run: |
+          cpanm --notest Test::More
+          cpanm --notest Data::Dumper
+          cpanm --notest JSON
+          cpanm --notest Text::Diff
+          cpanm --notest IPC::Run3
+
+      - name: run it
+        run: |
+          prove -v t 2>&1

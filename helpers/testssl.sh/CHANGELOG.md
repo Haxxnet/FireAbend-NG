@@ -1,53 +1,90 @@
 
 ## Change Log
 
+### Features implemented / improvements in 3.3dev
+
+* QUIC protocol check
+* TLS 1.3 early data (0-RTT)
+* Support for RFC 8998,  draft-yang-tls-hybrid-sm2-mlkem (TLS_SM4_GCM_SM3, TLS_SM4_CCM_SM3 ciphers, kx groups curveSM2, curveSM2MLKEM768; SM2 pub keys + signatures)
+* Adds a check for mandatory extended master secret TLS extension
+* Bump SSLlabs rating guide to 2009r
+* Check for Opossum vulnerability
+* `--phone-out` checks the HSTS preload list on https://hstspreload.org/
+* Enable IPv6 automagically, i.e. if target via IPv6 is reachable just (also) scan it
+* Detect and show DNS HTTPS RR (RFC 9460)
+* Provide an FAQ
+* Security fix: HTML-escape URLs in the HTML report to prevent stored XSS from a server-controlled `Location:` header (#3090)
+* Detect short-lived certificates (validity period <= `DAYS_VALID_SHORTLIVED`, default 10 days) and no longer flag them red merely for their short lifespan; warn only when less than 24h is left (#3097)
+* Check for SLH-DSA signatures (draft-reddy-tls-slhdsa)
+
 ### Features implemented / improvements in 3.2
 
-* Rating (SSL Labs, not complete)
+* Rating (SSL Labs)
 * Extend Server (cipher) preference: always now in wide mode instead of running all ciphers in the end (per default)
 * Remove "negotiated cipher / protocol"
 * Provide a better verdict wrt to server order: Now per protocol and ciphers are weighted for each protocol
-* Switched to multi-stage docker image with opensuse base to avoid musl libc issues, performance gain also
-* Improved compatibility with OpenSSL 3.0
+* Faster startup, other performance improvements
+* Switched to multi-stage docker image with opensuse base to avoid musl libc issues, benefit: also performance gain
+* Added GHCR.io docker image builds
+* Improved compatibility with OpenSSL 3.0 and higher versions like OpenSSL 3.5
 * Improved compatibility with Open/LibreSSL versions not supporting TLS 1.0-1.1 anymore
+* Reduced the set of openssl-bad binaries via github to Linux and FreeBSD, no kerberos binaries anymore, no Linux 32 Bit
 * Renamed PFS/perfect forward secrecy --> FS/forward secrecy
 * Cipher list straightening
+* Support RFC 9150 cipher suites
 * Improved mass testing
 * Better align colors of ciphers with standard cipherlists
 * Save a few cycles for ROBOT
 * Several ciphers more colorized
+* Added support for way more ciphers like all AEAD ciphers known so far
 * Percent output char problem fixed
 * Several display/output fixes
 * BREACH check: list all compression methods and add brotli
 * Test for old winshock vulnerability
 * Test for STARTTLS injection vulnerabilities (SMTP, POP3, IMAP)
-* STARTTLS: XMPP server support, plus new set of OpenSSL-bad binaries
+* STARTTLS: XMPP server support, plus a new set of OpenSSL-bad binaries
+* STARTTLS sieve support, plus again a new set of OpenSSL-bad binaries
+* STARTTLS LDAP support, AD + STARTTLS logic is there but experimental
 * Several code improvements to STARTTLS, also better detection when no STARTTLS is offered
+* STARTTLS telnet (TN3270/telnet) support
+* Detect throtteling via STARTTLS smtp
+* Renegotiation checks more reliable against different servers
 * STARTTLS on active directory service support
 * Security fixes: DNS and other input from servers
 * Don't penalize missing trust in rating when CA not in Java store
 * Added support for certificates with EdDSA signatures and public keys
 * Extract CA list shows supported certification authorities sent by the server
+* Wildcard certificates: detection and warning
+* Test for support for RFC 8879 certificate compression
+* Show intermediate cert validity / bad OCSP
+* If a TLS 1.3 host is tested and e.g. /usr/bin/openssl supports it, it'll automagically switch to it
 * TLS 1.2 and TLS 1.3 sig algs added
+* TLS 1.3: decrypting server response
 * Check for ffdhe groups
+* Check for six KEMs in draft-connolly-tls-mlkem-key-agreement/draft-kwiatkowski-tls-ecdhe-mlkem/draft-tls-westerbaan-xyber768d00
+* Check for ML-DSA signatures (draft-tls-westerbaan-mldsa)
 * Show server supported signature algorithms
+* Support for EdDSA (Ed25519/Ed448): sigalgo extension, check whether server offers EdDSA certificates, recognize EdDSA signatures
 * --add-ca can also now be a directory with \*.pem files
 * Warning of 398 day limit for certificates issued after 2020/9/1
 * Added environment variable for amount of attempts for ssl renegotiation check
 * Added --user-agent argument to support using a custom User Agent
 * Added --overwrite argument to support overwriting output files without warning
 * Headerflag X-XSS-Protection is now labeled as INFO
+* Search for more HTTP security headers on the server
 * Strict parser for HSTS
-* DNS via proxy improvements
+* DNS via proxy improvements, also IPv6 support for proxy
 * Client simulation runs in wide mode which is even better readable
 * Added --reqheader to support custom headers in HTTP requests
-* Test for support for RFC 8879 certificate compression
-* Deprecating --fast and --ssl-native (warning but still av)
-* Compatible to GNU grep 3.8
+* Deprecating --fast and --ssl-native (warning only but still av)
+* Compatible to GNU grep >=3.8, bash 5.x
 * Don't use external pwd command anymore
 * Doesn't hang anymore when there's no local resolver
+* Display whether server requests/requires a Client Certificate
 * Added --mtls feature to support client authentication
-* If a TLS 1.3 host is tested and e.g. /usr/bin/openssl supports it, it'll automagically will switch to it
+* CI run against a target with known configuration as a change canary
+* Updated client handshakes as new browsers and OpenSSL 3.5.x show KEMs
+* Start using client handshakes include ja3/ja4 so that similar handshakes will be recognized
 
 
 ### Features implemented / improvements in 3.0
@@ -102,7 +139,7 @@
 * Renegotiation checks improved, also no false positive for Node.js anymore
 * Major update of client simulations with self-collected up-to-date data
 * Update of CA certificate stores
-* Lots of bug fixes
+* Lots of bug and security fixes
 * More travis/CI checks -- still place for improvements
 * Man page reviewed
 
@@ -137,7 +174,7 @@
 * Trust chain check against certificate stores from Apple (OS), Linux (OS),
   Microsoft (OS), Mozilla (Firefox Browser), works for openssl >=1.0.1
 * IPv6 (status: 80% working, details see
-  https://github.com/drwetter/testssl.sh/issues/11
+  https://github.com/testssl/testssl.sh/issues/11
 * works now on servers requiring a x509 certificate for authentication
 * extensive CN <--> hostname check
 * SSL Session ID check
@@ -183,7 +220,7 @@
   * quite some LibreSSL fixes, still not recommended to use though (see https://testssl.sh/)
   * lots of fixes, code improvements, even more robust
 
-Full log @ https://github.com/drwetter/testssl.sh/commits/2.6/testssl.sh
+Full log @ https://github.com/testssl/testssl.sh/commits/2.6/testssl.sh
 
 ### New in 2.4
   * "only one cmd line option at a time" is completely gone
@@ -198,7 +235,7 @@ Full log @ https://github.com/drwetter/testssl.sh/commits/2.6/testssl.sh
   * lots of cosmetic and maintainability code cleanups
   * bugfixing
 
-Full changelog: https://github.com/drwetter/testssl.sh/commits/2.4/testssl.sh
+Full changelog: https://github.com/testssl/testssl.sh/commits/2.4/testssl.sh
 
 ### 2.2. new features:
   * Works fully under FreeBSD (openssl >=1.0)
@@ -214,7 +251,7 @@ Full changelog: https://github.com/drwetter/testssl.sh/commits/2.4/testssl.sh
   * RFC <---> OpenSSL name space mapping of ciphers everywhere
   * includes a lot of fixes
 
-Full changelog @  https://github.com/drwetter/testssl.sh/commits/2.2/testssl.sh
+Full changelog @  https://github.com/testssl/testssl.sh/commits/2.2/testssl.sh
 
 ### 2.0 major release, new features:
   * SNI

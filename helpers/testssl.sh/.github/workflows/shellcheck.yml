@@ -1,0 +1,39 @@
+# Runs shellcheck on code -- in error mode only.
+# "paths-ignore" should be in line with unit_test.*yml files
+---
+name: Shellcheck
+
+on:
+  pull_request:
+    paths-ignore:
+      - 't/**'
+      - 'utils/**'
+      - 'doc/**'
+      - 'bin/**'
+      - '**.md'
+      - '**.1'
+      - '**.html'
+      - '**.pem'
+      - '**.pdf'
+      - '**.yml'
+      - 'LICENSE'
+      - 'Dockerfile'
+      - 'Dockerfile.alpine'
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-24.04
+    env:
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install shellcheck
+        run: sudo apt update && sudo apt install -y shellcheck && shellcheck --version
+
+      - name: Check shell scripts
+        run: shellcheck -x -P "SCRIPTDIR"/utils --severity=error testssl.sh

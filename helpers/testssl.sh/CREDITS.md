@@ -4,13 +4,14 @@ Full contribution, see git log.
 * Dirk Wetter (creator, maintainer and main contributor)
   - Everything what's not mentioned below and is included in testssl.sh's git log
     minus what I probably forgot to mention
-  (too much other things to do at the moment and to list it would be a tough job)
+  (too much other things to do at the moment and to list it would be too time consuming)
 
 * David Cooper (main contributor)
   - Major extensions to socket support for all protocols
   - extended parsing of TLS ServerHello messages
   - TLS 1.3 support (final and pre-final) with needed en/decryption
   - add several TLS extensions
+  - Several ciphers and curves added
   - Detection + output of multiple certificates
   - several cleanups of server certificate related stuff
   - testssl.sh -e/-E: testing with a mixture of openssl + sockets
@@ -33,12 +34,13 @@ Full contribution, see git log.
   - RFC 8879, certificate compression
   - 128 cipher limit, padding
   - compatibility for LibreSSL and different OpenSSL versions
-  - Check for ffdhe groups
+  - PQC support: ML_KEMs, ML-DSA, curveSM2MLKEM768
+  - Check for ffdhe and ML-KEM groups
   - TLS 1.2 and TLS 1.3 sig algs added
   - Show server supported signature algorithms
-  - Show supported certification authorities sent by the server when client auth is requested
+  - Show supported certification authorities sent by the server when client auth is requested and whether certificate-based client authentication is not requested, optional, or required.
   - Provide a better verdict wrt to server order: Now per protocol and ciphers are weighted for each protocol
- -  Provide compatibility to every LibreSSL/OpenSSL versions
+ -  Provide compatibility to every LibreSSL/OpenSSL versions, including OpenSSL 4.0
   - Lots of fixes and improvements
 
 ##### Further credits (in alphabetical order)
@@ -53,6 +55,7 @@ Full contribution, see git log.
   - maximum certificate lifespan of 398 days
   - ssl renegotiation amount variable
   - custom http request headers
+  - HSTS preload list lookup (finalized: Mayank)
 
 * Frank Breedijk
   - Detection of insecure redirects
@@ -68,6 +71,12 @@ Full contribution, see git log.
 * Christian Dresen
    - Dockerfile
 
+* Eric Gu
+  - HTML report XSS fix (escape server-controlled URLs, #3090)
+
+* enxio
+   - support for TN3270/telnet STARTTLS
+
 * csett86
    - some MacOSX and Java client handshake data
 
@@ -80,6 +89,10 @@ Full contribution, see git log.
   - HTTP2/ALPN
   - bugfixes
   - former ARM binary support
+
+* Jauder Ho
+  - GH Action to build new container images upon push
+  - dependabot actions
 
 * Maciej Grela
   - colorless handling
@@ -127,6 +140,9 @@ Full contribution, see git log.
 * Oleksandr Nosenko
   - non-flat JSON support (--json-pretty)
   - in file output (CSV, JSON flat, JSON non-flat) support of a minimum severity level
+
+* Brett Randall
+  - Improved (experimental) Extended Validation (EV) certificate identification.
 
 * Jonathan Roach
   - TLS_FALLBACK_SCSV checks

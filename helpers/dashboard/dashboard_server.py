@@ -1166,7 +1166,7 @@ def render_index(static_state=None, static_job_logs=None):
               <td data-label="Resource"><span class="small text-uppercase fw-semibold">${{escapeHtml(job.resource || "-")}}</span></td>
               <td data-label="Timing">
                 <div class="small">${{escapeHtml(job.started_at || "not started")}}</div>
-                <div class="small text-body-secondary">${{escapeHtml(job.finished_at || job.updated_at || "")}}</div>
+                <div class="small text-body-secondary">${{escapeHtml(job.finished_at || "")}}</div>
               </td>
               <td class="small" data-label="Details">${{escapeHtml(detail)}}</td>
             </tr>
