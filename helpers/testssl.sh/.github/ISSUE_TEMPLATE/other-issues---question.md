@@ -12,7 +12,7 @@ assignees: ''
 3.2 or 3.3dev 
 -->
 
-**Did you read the [FAQ](https://github.com/testssl/testssl.sh/blob/3.3dev/FAQ.md)?**
+**Did you read the [FAQ](https://github.com/testssl/testssl.sh/blob/3.2/FAQ.md)?**
 <!--
 Please file only issues / ask questions which aren't answered there. It saves us time which we'd rather use for development.
 -->

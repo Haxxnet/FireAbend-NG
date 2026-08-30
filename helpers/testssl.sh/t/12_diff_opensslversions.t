@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-# Baseline diff test against google.com (csv output)
+# Baseline diff test against testssl.sh (csv output)
 #
 # This runs a basic test with the supplied openssl vs /usr/bin/openssl
 
@@ -11,7 +11,7 @@ use Text::Diff;
 
 my $tests = 0;
 my $prg="./testssl.sh";
-my $check2run="--protocols --std --server-preference --fs --header --vulnerable --ids-friendly --phone-out --client-simulation -q --ip=one --color 0 --csvfile";
+my $check2run="--protocols --std --server-preference --fs --header --renegotiation --crime --breach --poodle --tls-fallback --sweet32 --beast --lucky13 --freak --logjam --drown --rc4 --phone-out --client-simulation -q --ip=one --color 0 --csvfile";
 my $csvfile="tmp.csv";
 my $csvfile2="tmp2.csv";
 my $cat_csvfile="";
@@ -21,10 +21,7 @@ my $diff="";
 my $distro_openssl="/usr/bin/openssl";
 my @args="";
 # that can be done better but I am a perl n00b ;-)
-my $os="$^O";
-
-# useful against "failed to flush stdout" messages
-STDOUT->autoflush(1);
+my $os=`perl -e 'print "$^O";'`;
 
 die "Unable to open $prg" unless -f $prg;
 die "Unable to open $distro_openssl" unless -f $distro_openssl;
@@ -97,11 +94,6 @@ $cat_csvfile2 =~ s/.nonce-.* //g;
 # Fix IP addresses. Needed when we don't hit the same IP address. We just remove them
 $cat_csvfile  =~ s/","google.com\/.*","443/","google.com","443/g;
 $cat_csvfile2 =~ s/","google.com\/.*","443/","google.com","443/g;
-
-# Address differences in QUIC: Ubuntu 24.04's openssl still doesn't support QUIC, MacOS 26 does
-# (Status 06/2026, should be checked later)
-$cat_csvfile  =~  s/"QUIC".*\n//g;
-$cat_csvfile2  =~ s/"QUIC".*\n//g;
 
 
 if ( $os eq "darwin" ){

@@ -1,5 +1,3 @@
-# "paths-ignore" should be in line with unit_tests_macos.yml
-# and shellcheck.yml
 ---
 name: CI run Ubuntu
 
@@ -32,10 +30,10 @@ jobs:
         perl: ['5.38']
     name: Unit test on ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Set up perl
-        uses: shogo82148/actions-setup-perl@v1.43.1
+        uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: ${{ matrix.perl }}
 
@@ -51,8 +49,6 @@ jobs:
           printf "%s\n" "----------"
           bash --version
           printf "%s\n" "----------"
-          echo $PATH
-          printf "%s\n" "----------"
 
       - name: Install perl modules
         run: |
@@ -60,7 +56,6 @@ jobs:
           cpanm --notest Data::Dumper
           cpanm --notest JSON
           cpanm --notest Text::Diff
-          cpanm --notest IPC::Run3
 
       - name: run it
         run: |

@@ -11,7 +11,6 @@ Full contribution, see git log.
   - extended parsing of TLS ServerHello messages
   - TLS 1.3 support (final and pre-final) with needed en/decryption
   - add several TLS extensions
-  - Several ciphers and curves added
   - Detection + output of multiple certificates
   - several cleanups of server certificate related stuff
   - testssl.sh -e/-E: testing with a mixture of openssl + sockets
@@ -34,13 +33,12 @@ Full contribution, see git log.
   - RFC 8879, certificate compression
   - 128 cipher limit, padding
   - compatibility for LibreSSL and different OpenSSL versions
-  - PQC support: ML_KEMs, ML-DSA, curveSM2MLKEM768
   - Check for ffdhe and ML-KEM groups
   - TLS 1.2 and TLS 1.3 sig algs added
   - Show server supported signature algorithms
   - Show supported certification authorities sent by the server when client auth is requested and whether certificate-based client authentication is not requested, optional, or required.
   - Provide a better verdict wrt to server order: Now per protocol and ciphers are weighted for each protocol
- -  Provide compatibility to every LibreSSL/OpenSSL versions, including OpenSSL 4.0
+ -  Provide compatibility to every LibreSSL/OpenSSL versions, including OpenSSL 3.5.0
   - Lots of fixes and improvements
 
 ##### Further credits (in alphabetical order)
@@ -55,7 +53,6 @@ Full contribution, see git log.
   - maximum certificate lifespan of 398 days
   - ssl renegotiation amount variable
   - custom http request headers
-  - HSTS preload list lookup (finalized: Mayank)
 
 * Frank Breedijk
   - Detection of insecure redirects
@@ -70,9 +67,6 @@ Full contribution, see git log.
 
 * Christian Dresen
    - Dockerfile
-
-* Eric Gu
-  - HTML report XSS fix (escape server-controlled URLs, #3090)
 
 * enxio
    - support for TN3270/telnet STARTTLS
@@ -89,6 +83,9 @@ Full contribution, see git log.
   - HTTP2/ALPN
   - bugfixes
   - former ARM binary support
+
+* Eric Gu
+  - HTML report XSS fix: escape server-controlled URLs
 
 * Jauder Ho
   - GH Action to build new container images upon push

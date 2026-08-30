@@ -13,6 +13,8 @@ This is a collection of frequently asked questions which should help to answer s
 * I am scanning an IPv6 address or a dual stacked host via the testssl.sh docker image but IPv6 doesn't work.
     * That is is not testssl.sh related but a docker "feature": docker on the host doesn't hand out per default IPv6 addresses to the container, also routing on the host might need additional configuration, see the [docker documentation](https://docs.docker.com/engine/daemon/ipv6/#use-ipv6-for-the-default-bridge-network). The fastest "fix" is just to use [host networking](https://docs.docker.com/engine/network/drivers/host/) like e.g. ``docker run --rm -ti  --net=host  drwetter/testssl.sh -6 ipv6.google.com``
 
+  
+
 #### 2. Rating / Grading
 
 * I am testing STARTTLS <PROTO\> and I get a poor grading/rating. Why is that??

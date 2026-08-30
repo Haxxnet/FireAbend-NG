@@ -11,43 +11,31 @@ assignees: ''
 _Feel free to remove this line but please stick to the template. We would like to reproduce the bug and therefore need concise information. Depending on the lack of information provided we might close your issue otherwise right away. _
 -->
 
-**General remark**
-
-It's much appreciated if you spot bugs and file them! Please keep in mind though that you'd need to enable us to reproduce what you encountered. If otherwise we need to play ping-pong it costs time on our side we'd rather like to spend on the development. 
-
 **Before you open an issue please check which version you are running and whether it is the latest in stable / dev branch**
 
-- [ ] I am running version from the git repo :  <!-- use ``git log | head -1`` --> 
-- [ ] I am running: <!-- use: ``testssl.sh -v | grep from`` -->
-- [ ] Different version, check for updates here:  <!-- Please specify -->
+I am running version (``git log | head -1`` if running from the git repo. Otherwise ``testssl.sh -v | grep from``)
 
 
-**Before you open an issue please consult the [FAQ](https://github.com/testssl/testssl.sh/blob/3.3dev/FAQ.md) and check whether this is a known problem by searching the  [issues](https://github.com/testssl/testssl.sh/issues)**
+**Before you open an issue please whether this is a known problem by searching the issues**
 
-- [ ] Is related to ...
-- [ ] couldn't find anything
+Is related to / couldn't find anything
 
 
-**Command line to reproduce (or docker command)**
+**Command line / docker command to reproduce**
 
-Which was your command line? In addition the target of your scan is often needed to reproduce what happened. If you don't want to disclose it publicly: ``grep SWCONTACT testssl.sh``. 
+Which was your command line? In addition the target of your scan would be helpful. If you don't want to disclose it publicly: ``grep SWCONTACT testssl.sh``.
 
 
 **Expected behavior**
 
-A clear and concise description of what you would expect to happen instead.
+A clear and concise description of what you would expect to happen.
 
 
 **Your system (please complete the following information):**
- - OS: <!-- ``awk -F\" '/PRETTY_NAME/ { print $2 }' /etc/os-release`` --> 
- - Platform: <!--``uname -srm`` --> 
- - OpenSSL + bash: <!-- ``testssl.sh -b 2>/dev/null | grep Using`` -->
-
-**AI section**
-- [ ] I found a bug using LLM version: <!-- e.g. GPT-A.B, Claude <NAME> A.B, Gemini A.B <NAME>, Qwen<B>-Coder, DeepSeek-<A>  etc. -->
-- [ ] It was just me
-
+ - OS: ``awk -F\" '/PRETTY_NAME/ { print $2 }' /etc/os-release``
+ - Platform: ``uname -srm``
+ - OpenSSL + bash: ``testssl.sh -b 2>/dev/null | grep Using``
 
 **Additional context**
 
-Any other context about the problem goes here.
+Add any other context about the problem goes here.

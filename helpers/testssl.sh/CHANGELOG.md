@@ -1,25 +1,13 @@
 
 ## Change Log
 
-### Features implemented / improvements in 3.3dev
+### Security fixes in 3.2
 
-* QUIC protocol check
-* TLS 1.3 early data (0-RTT)
-* Support for RFC 8998,  draft-yang-tls-hybrid-sm2-mlkem (TLS_SM4_GCM_SM3, TLS_SM4_CCM_SM3 ciphers, kx groups curveSM2, curveSM2MLKEM768; SM2 pub keys + signatures)
-* Adds a check for mandatory extended master secret TLS extension
-* Bump SSLlabs rating guide to 2009r
-* Check for Opossum vulnerability
-* `--phone-out` checks the HSTS preload list on https://hstspreload.org/
-* Enable IPv6 automagically, i.e. if target via IPv6 is reachable just (also) scan it
-* Detect and show DNS HTTPS RR (RFC 9460)
-* Provide an FAQ
-* Security fix: HTML-escape URLs in the HTML report to prevent stored XSS from a server-controlled `Location:` header (#3090)
-* Detect short-lived certificates (validity period <= `DAYS_VALID_SHORTLIVED`, default 10 days) and no longer flag them red merely for their short lifespan; warn only when less than 24h is left (#3097)
-* Check for SLH-DSA signatures (draft-reddy-tls-slhdsa)
+* (3.2.4): HTML-escape URLs in the HTML report to prevent stored XSS from a server-controlled "Location:" header (#3090)
 
 ### Features implemented / improvements in 3.2
 
-* Rating (SSL Labs)
+* Rating (SSL Labs), as of 3.2.2 version 2009r
 * Extend Server (cipher) preference: always now in wide mode instead of running all ciphers in the end (per default)
 * Remove "negotiated cipher / protocol"
 * Provide a better verdict wrt to server order: Now per protocol and ciphers are weighted for each protocol
@@ -85,7 +73,7 @@
 * CI run against a target with known configuration as a change canary
 * Updated client handshakes as new browsers and OpenSSL 3.5.x show KEMs
 * Start using client handshakes include ja3/ja4 so that similar handshakes will be recognized
-
+* Provide an FAQ
 
 ### Features implemented / improvements in 3.0
 

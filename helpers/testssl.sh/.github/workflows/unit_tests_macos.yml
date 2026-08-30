@@ -1,5 +1,3 @@
-# "paths-ignore" should be in line with unit_tests_ubuntu.yml
-# and shellcheck.yml
 ---
 name: CI run MacOS
 
@@ -24,12 +22,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: macos-14
 
     name: PoC unit test on MacOS
     steps:
       - name: checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up system (perl, curl is installed already)
         run: |
@@ -45,8 +43,6 @@ jobs:
           printf "%s\n" "----------"
           bash --version
           printf "%s\n" "----------"
-          echo $PATH
-          printf "%s\n" "----------"
 
       - name: Install perl modules
         run: |
@@ -54,7 +50,6 @@ jobs:
           cpanm --notest Data::Dumper
           cpanm --notest JSON
           cpanm --notest Text::Diff
-          cpanm --notest IPC::Run3
 
       - name: run it
         run: |
