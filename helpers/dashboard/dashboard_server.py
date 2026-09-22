@@ -12,7 +12,7 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 BOOTSTRAP_CSS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
 BOOTSTRAP_CSS_INTEGRITY = "sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
@@ -1472,7 +1472,9 @@ def export_nuclei_static_report(scan_dir, output_path=None):
     markup = render_nuclei_viewer(
         static_results=results,
         static_artifact_name=artifact_name,
-        static_artifact_url=artifact_path.resolve().as_uri(),
+        # Relative URL, resolved against nuclei-report.html's own location, so the
+        # "download" links keep working after the scan folder is moved/copied.
+        static_artifact_url=quote(artifact_name),
     )
     markup = inline_dashboard_assets(markup)
     destination = output_path or (scan_dir / "nuclei-report.html")
@@ -1488,7 +1490,11 @@ def export_static_report(scan_dir, output_path=None):
             if scan_dir not in artifact_path.parents or not artifact_path.is_file():
                 artifact["url"] = "#"
                 continue
-            artifact["url"] = artifact_path.as_uri()
+            # Use a relative URL (resolved by the browser against the report's own
+            # location) instead of an absolute file:// URI. Absolute URIs bake in the
+            # filesystem path of the machine that generated the report, which breaks
+            # once the scan folder is copied/opened elsewhere (e.g. Linux -> Windows).
+            artifact["url"] = quote(artifact["relative_path"])
 
     job_logs = {}
     for job in state["jobs"]:
