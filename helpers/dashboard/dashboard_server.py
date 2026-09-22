@@ -1214,7 +1214,10 @@ def render_index(static_state=None, static_job_logs=None):
 
         function buildArtifactHref(file) {{
           const path = String(file.relative_path || "");
-          if (!staticDashboardState && path.toLowerCase().includes("/nuclei/")) {{
+          if (path.toLowerCase().includes("/nuclei/")) {{
+            if (staticDashboardState) {{
+              return (staticDashboardState.nuclei_static_report_path) || file.url;
+            }}
             return "/nuclei-viewer";
           }}
           return file.url;
@@ -1404,6 +1407,79 @@ def inline_bootstrap_icons(markup):
     return markup.replace(icon_tag, f"<style>\n{icon_css}\n</style>", 1)
 
 
+def inline_dashboard_assets(markup):
+    css_path = DASHBOARD_ASSETS["asset_files"].get("bootstrap.min.css")
+    js_path = DASHBOARD_ASSETS["asset_files"].get("bootstrap.bundle.min.js")
+    if css_path and css_path.is_file():
+        css_tag = f'<link href="{DASHBOARD_ASSETS["bootstrap_css_href"]}" rel="stylesheet">'
+        markup = markup.replace(css_tag, f"<style>\n{css_path.read_text(encoding='utf-8')}\n</style>", 1)
+    if js_path and js_path.is_file():
+        js_tag = f'<script src="{DASHBOARD_ASSETS["bootstrap_js_src"]}"></script>'
+        markup = markup.replace(js_tag, f"<script>\n{js_path.read_text(encoding='utf-8')}\n</script>", 1)
+    return inline_bootstrap_icons(markup)
+
+
+def find_preferred_nuclei_artifact(scan_dir):
+    nuclei_dir = scan_dir / "07_findings" / "nuclei"
+    if not nuclei_dir.is_dir():
+        return None
+
+    candidates = [item for item in sorted(nuclei_dir.iterdir()) if item.is_file() and item.stat().st_size > 0]
+    for suffix in (".jsonl", ".json", ".txt"):
+        for candidate in candidates:
+            if candidate.name.lower().endswith(suffix):
+                return candidate
+    return None
+
+
+def load_nuclei_results(artifact_path):
+    text = artifact_path.read_text(encoding="utf-8", errors="replace").strip()
+    if not text:
+        return []
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict) and isinstance(parsed.get("results"), list):
+            return parsed["results"]
+        return [parsed]
+    except json.JSONDecodeError:
+        pass
+
+    results = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            results.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return results
+
+
+def export_nuclei_static_report(scan_dir, output_path=None):
+    artifact_path = find_preferred_nuclei_artifact(scan_dir)
+    if artifact_path is None:
+        return None
+
+    results = load_nuclei_results(artifact_path)
+    if not results:
+        return None
+
+    artifact_name = artifact_path.relative_to(scan_dir).as_posix()
+    markup = render_nuclei_viewer(
+        static_results=results,
+        static_artifact_name=artifact_name,
+        static_artifact_url=artifact_path.resolve().as_uri(),
+    )
+    markup = inline_dashboard_assets(markup)
+    destination = output_path or (scan_dir / "nuclei-report.html")
+    destination.write_text(markup, encoding="utf-8")
+    return destination.name
+
+
 def export_static_report(scan_dir, output_path=None):
     state = build_state(scan_dir)
     for section in state["sections"]:
@@ -1423,23 +1499,27 @@ def export_static_report(scan_dir, output_path=None):
             "content": tail_file(log_path, 250),
         }
 
-    markup = render_index(static_state=state, static_job_logs=job_logs)
-    css_path = DASHBOARD_ASSETS["asset_files"].get("bootstrap.min.css")
-    js_path = DASHBOARD_ASSETS["asset_files"].get("bootstrap.bundle.min.js")
-    if css_path and css_path.is_file():
-        css_tag = f'<link href="{DASHBOARD_ASSETS["bootstrap_css_href"]}" rel="stylesheet">'
-        markup = markup.replace(css_tag, f"<style>\n{css_path.read_text(encoding='utf-8')}\n</style>", 1)
-    if js_path and js_path.is_file():
-        js_tag = f'<script src="{DASHBOARD_ASSETS["bootstrap_js_src"]}"></script>'
-        markup = markup.replace(js_tag, f"<script>\n{js_path.read_text(encoding='utf-8')}\n</script>", 1)
+    state["nuclei_static_report_path"] = export_nuclei_static_report(scan_dir)
 
-    markup = inline_bootstrap_icons(markup)
+    markup = render_index(static_state=state, static_job_logs=job_logs)
+    markup = inline_dashboard_assets(markup)
     destination = output_path or (scan_dir / "fireabend-report.html")
     destination.write_text(markup, encoding="utf-8")
     return destination
 
 
-def render_nuclei_viewer():
+def render_nuclei_viewer(static_results=None, static_artifact_name=None, static_artifact_url=None):
+    if static_results is not None:
+        static_export_json = json_for_inline_script(
+            {
+                "results": static_results,
+                "artifactName": static_artifact_name or "",
+                "artifactUrl": static_artifact_url or "",
+            }
+        )
+        static_data_script = f'<script>\n      window.__NUCLEI_STATIC_EXPORT__ = {static_export_json};\n    </script>'
+    else:
+        static_data_script = ""
     bootstrap_css_integrity_attr = (
         f' integrity="{DASHBOARD_ASSETS["bootstrap_css_integrity"]}" crossorigin="anonymous"'
         if DASHBOARD_ASSETS["bootstrap_css_integrity"]
@@ -1836,7 +1916,9 @@ def render_nuclei_viewer():
     </div>
 
     <script src="__BOOTSTRAP_JS_SRC__"__BOOTSTRAP_JS_INTEGRITY__></script>
+    __NUCLEI_STATIC_DATA_SCRIPT__
     <script>
+      const nucleiStaticExport = window.__NUCLEI_STATIC_EXPORT__ || null;
       const severityOrder = ["critical", "high", "medium", "low", "info", "unknown"];
       const viewerRefreshIntervalMs = 4000;
       const severityColors = {
@@ -2676,10 +2758,13 @@ def render_nuclei_viewer():
       function updateViewerArtifactLinks() {
         document.getElementById("viewerArtifactName").textContent = activeArtifactPath ? activeArtifactPath.split("/").pop() : "No nuclei artifact found";
         document.getElementById("viewerArtifactPath").textContent = activeArtifactPath || "No artifact path available";
-        document.getElementById("openJsonArtifact").href = activeJsonArtifactPath ? `/files/${encodeURIComponent(activeJsonArtifactPath)}` : "#";
-        document.getElementById("openJsonArtifact").classList.toggle("disabled", !activeJsonArtifactPath);
-        document.getElementById("openRawArtifact").href = activeRawArtifactPath ? `/files/${encodeURIComponent(activeRawArtifactPath)}` : "#";
-        document.getElementById("openRawArtifact").classList.toggle("disabled", !activeRawArtifactPath);
+        const staticArtifactUrl = nucleiStaticExport ? nucleiStaticExport.artifactUrl : "";
+        const jsonHref = staticArtifactUrl || (activeJsonArtifactPath ? `/files/${encodeURIComponent(activeJsonArtifactPath)}` : "");
+        const rawHref = staticArtifactUrl || (activeRawArtifactPath ? `/files/${encodeURIComponent(activeRawArtifactPath)}` : "");
+        document.getElementById("openJsonArtifact").href = jsonHref || "#";
+        document.getElementById("openJsonArtifact").classList.toggle("disabled", !jsonHref);
+        document.getElementById("openRawArtifact").href = rawHref || "#";
+        document.getElementById("openRawArtifact").classList.toggle("disabled", !rawHref);
       }
 
       function renderWaitingForResultsState() {
@@ -2704,6 +2789,24 @@ def render_nuclei_viewer():
       }
 
       async function refreshViewerData() {
+        if (nucleiStaticExport) {
+          activeArtifactPath = nucleiStaticExport.artifactName || "";
+          activeJsonArtifactPath = activeArtifactPath;
+          activeRawArtifactPath = activeArtifactPath;
+          updateViewerArtifactLinks();
+
+          const nextResults = (nucleiStaticExport.results || []).map(hydrateResult);
+          allResults = nextResults;
+          lastResultsSignature = buildResultsSignature(nextResults);
+          resetSeverityFiltersToAvailable();
+          renderMetrics(allResults);
+          renderTypeFilter(allResults);
+          renderSidebarFilters();
+          applyFilters();
+          document.getElementById("viewerStatus").textContent = `Static export snapshot with ${nextResults.length} finding(s) embedded when the report was generated.`;
+          return;
+        }
+
         const requestedArtifact = getQueryParam("artifact");
         const state = await fetchState();
         availableNucleiFiles = (state.sections || [])
@@ -2770,6 +2873,9 @@ def render_nuclei_viewer():
       async function bootstrapViewer() {
         wireFilterControls();
         await refreshViewerData();
+        if (nucleiStaticExport) {
+          return;
+        }
         viewerRefreshTimer = window.setInterval(() => {
           refreshViewerData().catch((error) => {
             document.getElementById("viewerStatus").textContent = error.message || "Unable to refresh nuclei viewer.";
@@ -2803,6 +2909,8 @@ def render_nuclei_viewer():
         "__BOOTSTRAP_JS_SRC__", DASHBOARD_ASSETS["bootstrap_js_src"]
     ).replace(
         "__BOOTSTRAP_JS_INTEGRITY__", bootstrap_js_integrity_attr
+    ).replace(
+        "__NUCLEI_STATIC_DATA_SCRIPT__", static_data_script
     )
 
 
