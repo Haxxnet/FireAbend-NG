@@ -15,3 +15,5 @@ $(NAME).$(MANSECTION): $(NAME).$(MANSECTION).md
 
 $(NAME).$(MANSECTION).html: template.html $(NAME).$(MANSECTION).md
 	$(PANDOC) --standalone --to html5 --template template.html --metadata title="$(TITLE)" $(NAME).$(MANSECTION).md -o $@
+
+# Source is Markdown

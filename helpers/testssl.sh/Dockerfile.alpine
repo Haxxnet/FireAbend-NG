@@ -1,6 +1,6 @@
 # syntax=docker.io/docker/dockerfile:1
 
-FROM alpine:3.21 AS base-alpine
+FROM alpine:3.24 AS base-alpine
 RUN <<HEREDOC
   apk add --no-cache bash procps drill coreutils libidn curl socat openssl xxd
 

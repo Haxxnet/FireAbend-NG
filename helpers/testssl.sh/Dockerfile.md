@@ -3,7 +3,7 @@
 Run the image with `testssl.sh` options appended (default is `--help`). The container entrypoint is already set to `testsl.sh` for convenience.
 
 ```bash
-docker run --rm -it ghcr.io/testssl/testssl.sh:3.2 --fs github.com
+docker run --rm -it ghcr.io/testssl/testssl.sh:3.3dev  github.com
 ```
 
 ### Output files
@@ -14,7 +14,7 @@ Use a volume bind mount to a local host directory to access the files outside of
 
 ```bash
 # Writes the HTML output to the host path: /tmp/example.com_p443-<date>-<time>.html
-docker run --rm -it -v /tmp:/data --workdir /data ghcr.io/testssl/testssl.sh:3.2 --htmlfile ./ example.com
+docker run --rm -it -v /tmp:/data --workdir /data ghcr.io/testssl/testssl.sh:3.3dev --htmlfile ./ example.com
 ```
 
 > [!NOTE]
@@ -30,8 +30,7 @@ You can pull the image from either of these registries:
 - GHCR: [`ghcr.io/testssl/testssl.sh`][image-registry::ghcr]
 
 Supported tags:
-- `3.2` / `latest`
-- `3.0` is the old stable version ([soon to become EOL][testssl::v3p0-eol])
+- `3.3dev` / `latest`
 
 ### Building the `testssl.sh` container image
 
@@ -39,8 +38,8 @@ You can build with a standard `git clone` + `docker build`. Tagging the image wi
 
 ```bash
 mkdir /tmp/testssl && cd /tmp/testssl
-git clone --branch 3.2 --depth 1 https://github.com/testssl/testssl.sh .
-docker build --tag localhost/testssl.sh:3.2 .
+git clone --branch 3.3dev --depth 1 https://github.com/testssl/testssl.sh .
+docker build --tag localhost/testssl.sh:3.3dev .
 ```
 
 There are two base images supported:
@@ -56,7 +55,7 @@ For contributors, if needing context on the [package selection has been document
 You can build with a single command instead via:
 
 ```bash
-docker build --tag localhost/testssl.sh:3.2 https://github.com/testssl/testssl.sh.git#3.2
+docker build --tag localhost/testssl.sh:3.3dev https://github.com/testssl/testssl.sh.git#3.3dev
 ```
 
 > [!NOTE]
@@ -68,9 +67,9 @@ To build the Alpine image instead, additionally provide the ([alternative `Docke
 
 ```bash
 docker build \
-  --tag localhost/testssl.sh:3.2-alpine \
-  --file https://raw.githubusercontent.com/testssl/testssl.sh/3.2/Dockerfile.alpine \
-  https://github.com/testssl/testssl.sh.git#3.2
+  --tag localhost/testssl.sh:3.3dev-alpine \
+  --file https://raw.githubusercontent.com/testssl/testssl.sh/3.3dev/Dockerfile.alpine \
+  https://github.com/testssl/testssl.sh.git#3.3dev
 ```
 
 [docker-docs::cli::cp]: https://docs.docker.com/reference/cli/docker/container/cp/

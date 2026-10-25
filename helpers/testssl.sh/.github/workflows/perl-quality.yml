@@ -1,0 +1,47 @@
+name: Perl quality
+
+on:
+  pull_request:
+    paths:
+      - 't/**'
+      - 'cpanfile'
+      - '.perlcritic'
+      - '.github/workflows/perl-quality.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  perl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shogo82148/actions-setup-perl@v1.44.2
+        with:
+          perl-version: '5.38'
+
+      - name: Install dev modules
+        run: cpanm --notest Perl::Critic Perl::Tidy CPAN::Audit
+      - name: Install dev modules
+        # add all perl modules from other modules tool, otherwise the next run fails
+        run: cpanm --notest Data::Dumper IPC::Run3 JSON Test::More Text::Diff
+
+      - name: 'Syntax check #1 w Perl::Tidy'
+        run: |
+          perltidy -se t/*.t
+        #TODO: we should as well reformat with the t(i)dy files generated
+
+      - name: Syntax check all test files with perl itself
+        run: |
+          find t -name '*.t' -o -name '*.pm' | while read -r f; do
+            perl -I t/lib -c "$f"
+          done
+
+      - name: Use Perl::Critic for best practises
+        run: perlcritic -4 t/*.t
+
+      - name: Audit CPAN modules for known CVEs
+        run: cpan-audit installed --exit-zero
+        # logic is: in the container all should be fine. There are doubts though about deliberately unfixed ones
+

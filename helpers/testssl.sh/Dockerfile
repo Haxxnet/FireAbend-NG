@@ -1,6 +1,6 @@
 # syntax=docker.io/docker/dockerfile:1
 
-ARG LEAP_VERSION=15.6
+ARG LEAP_VERSION=16.0
 ARG INSTALL_ROOT=/rootfs
 
 FROM opensuse/leap:${LEAP_VERSION} AS builder

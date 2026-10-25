@@ -6,6 +6,7 @@
 # We don't use a full run, only the HTTP header section.
 
 use strict;
+use warnings;
 use Test::More;
 
 my $tests = 0;

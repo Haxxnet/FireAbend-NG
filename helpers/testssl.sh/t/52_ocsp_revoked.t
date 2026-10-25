@@ -7,6 +7,7 @@
 # We don't use a full run, only the certificate section.
 
 use strict;
+use warnings;
 use Test::More;
 use Data::Dumper;
 use Text::Diff;

@@ -3,11 +3,12 @@
 # Basics: are there semantic errors which are easy to spot?
 
 use strict;
+use warnings;
 use Test::More;
 
 my $tests = 0;
-my $prg="testssl.sh";
-my $os="$^O";
+my $prg = "testssl.sh";
+my $os = "$^O";
 
 if ( $os eq "darwin" ){
      plan skip_all => 'No checks on MacOS';
@@ -27,7 +28,7 @@ $tests++;
 #2
 printf "\n%s\n", "Testing for backticks ...";
 
-my @matches = qx(grep -nP '`[^`]*`' $prg);
+@matches = qx(grep -nP '`[^`]*`' $prg);
 is(scalar(@matches), 0, "Checking bad backtick patterns")
 or diag(@matches);
 $tests++;
@@ -35,7 +36,7 @@ $tests++;
 #3
 printf "\n%s\n", "Sourcing without checking the file exists #1 ...";
 
-my @matches = qx(grep -nP '^\s*\.\s+\$' $prg);
+@matches = qx(grep -nP '^\\s*\\.\\s+\$' $prg);
 is(scalar(@matches), 0, "Checking bad sourcing pattern #1")
 or diag(@matches);
 $tests++;
@@ -43,7 +44,7 @@ $tests++;
 #4
 printf "\n%s\n", "Sourcing without checking the file exists #2 ...";
 
-my @matches = qx(grep -nP '^\s*source\s+\$' $prg);
+@matches = qx(grep -nP '^\\s*source\\s+\$' $prg);
 is(scalar(@matches), 0, "Checking bad sourcing pattern #2")
 or diag(@matches);
 $tests++;
