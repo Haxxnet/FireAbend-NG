@@ -1,3 +1,17 @@
+## [0.5.4](https://github.com/l4rm4nd/IKESS/compare/v0.5.3...v0.5.4) (2026-10-26)
+
+
+### Bug Fixes
+
+* add progress bar ([6b01f0e](https://github.com/l4rm4nd/IKESS/commit/6b01f0e9b9f2e7ce5c750194117e12e34ae9b43b))
+
+## [0.5.3](https://github.com/l4rm4nd/IKESS/compare/v0.5.2...v0.5.3) (2026-10-25)
+
+
+### Bug Fixes
+
+* use fork with PR in Docker image to support modern IKEv2 proposals ([e6e1a87](https://github.com/l4rm4nd/IKESS/commit/e6e1a870f5ab178acaf3d4f011b5c0cbdeb8823c))
+
 ## [0.5.2](https://github.com/l4rm4nd/IKESS/compare/v0.5.1...v0.5.2) (2026-10-25)
 
 
@@ -18,18 +32,4 @@
 ### Features
 
 * improve ike detection and add features ([0c42694](https://github.com/l4rm4nd/IKESS/commit/0c426941cdf04a406a2cb80e9c4d24d098276953))
-
-## [0.4.0](https://github.com/l4rm4nd/IKESS/compare/v0.3.0...v0.4.0) (2026-10-25)
-
-
-### Features
-
-* add --nat-t option to probe IKE over UDP 4500 ([a811fd8](https://github.com/l4rm4nd/IKESS/commit/a811fd8013716b4e0da48c4ee428500e3ef65770))
-
-## [0.3.0](https://github.com/l4rm4nd/IKESS/compare/v0.2.3...v0.3.0) (2025-10-31)
-
-
-### Features
-
-* fix argparse; new --fullalgs behaviour ([430fe1d](https://github.com/l4rm4nd/IKESS/commit/430fe1d538d274f1d78c71e9abaadf9ba0ed94f3))
 
