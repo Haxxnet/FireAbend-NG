@@ -12,7 +12,7 @@
 	url = https://github.com/l4rm4nd/shcheck2excel
 [submodule "helpers/testssl.sh"]
 	path = helpers/testssl.sh
-	url = https://github.com/drwetter/testssl.sh
+	url = https://github.com/testssl/testssl.sh
 [submodule "helpers/ssh-audit-excel"]
 	path = helpers/ssh-audit-excel
 	url = https://github.com/l4rm4nd/ssh-audit-excel
