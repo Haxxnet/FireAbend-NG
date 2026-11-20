@@ -191,6 +191,7 @@ IPv6_OK=false                           # Determines later whether there's IPv6 
 ALL_CLIENTS=${ALL_CLIENTS:-false}       # do you want to run all client simulation form all clients supplied by SSLlabs?
 OFFENSIVE=${OFFENSIVE:-true}            # do you want to include offensive vulnerability tests which may cause blocking by an IDS?
 ADDTL_CA_FILES="${ADDTL_CA_FILES:-""}"  # single file with a CA in PEM format or comma separated lists of them
+declare -a ADDTL_CA_FILES_ARRAY=()         # expanded CA paths, preserving whitespace in filenames
 
 ########### Tuning vars which cannot be set by a cmd line switch. Use instead e.g "HEADER_MAXSLEEP=10 ./testssl.sh <your_args_here>"
 #
@@ -415,6 +416,7 @@ PROXY=""                                # Once check_proxy() executed it contain
 MTLS=""                                 # mTLS authentication with client certificate and private key
 VULN_COUNT=0
 SERVICE=""                              # Is the server running an HTTP server, SMTP, POP or IMAP?
+QUIC_SUPPORTED=""                       # Whether host supports HTTP/3=QUIC. Can be empty, uncertain no or yes
 URI=""
 CERT_FINGERPRINT_SHA2=""
 RSA_CERT_FINGERPRINT_SHA2=""
@@ -1288,7 +1290,13 @@ fileout_json_print_parameter() {
           if [[ "$value" =~ [[:cntrl:]] ]]; then
                value="$(sanitize_fileout "$value")"
           fi
-          printf -- "%b%b%b%b" "$spaces" "\"$parameter\"" "$filler" ": \"$value\"" >> "$JSONFILE"
+          # The value is data received, not a printf format: escape backslash,
+          # double quote and the LF which sanitize_fileout keeps (see #2330),
+          # then write it with %s so \0NN, \xNN, \c or \t are not interpreted.
+          value="${value//\\/\\\\}"
+          value="${value//\"/\\\"}"
+          value="${value//$'\n'/\\n}"
+          printf -- "%s%s%s%s" "$spaces" "\"$parameter\"" "$filler" ": \"$value\"" >> "$JSONFILE"
           "$not_last" && printf ",\n" >> "$JSONFILE"
      fi
 }
@@ -1397,7 +1405,7 @@ fileout_insert_warning() {
 
      # See #2599. The "clientProblem" wrapper should only be added if fileout_insert_warning()
      # is called before fileout_banner(). The only instance in which this function is called
-     # after fileout_banner() is in the case of a TLS 1.3 only server when $OPENSSL does not
+     # after fileout_banner() is in the case of a TLS 1.3-only server when $OPENSSL does not
      # support TLS 1.3.
      if "$do_pretty_json" && "$JSONHEADER" && ! "$TLS13_ONLY"; then
           echo -e "          \"clientProblem${CLIENT_PROB_NO}\" : [" >>"$JSONFILE"
@@ -1821,10 +1829,10 @@ http_get() {
 
      if type -p curl &>/dev/null; then
           if [[ -z "$PROXY" ]]; then
-               curl -s --noproxy '*' -A $''"$useragent"'' -o $dl "$1"
+               curl -s --noproxy '*' -A $''"$useragent"'' -o "$dl" "$1"
           else
                # for the sake of simplicity assume the proxy is using http
-               curl -s -x $PROXYIP:$PROXYPORT -A $''"$useragent"'' -o $dl "$1"
+               curl -s -x "$PROXYIP":"$PROXYPORT" -A $''"$useragent"'' -o "$dl" "$1"
           fi
           return $?
      elif type -p wget &>/dev/null; then
@@ -1832,12 +1840,12 @@ http_get() {
           # assume the GET protocol we query is using http -- http_proxy is the $ENV not for the connection TO
           # the proxy, but for the protocol we query THROUGH the proxy
           if [[ -z "$PROXY" ]]; then
-               wget --no-proxy -q -U $''"$useragent"'' -O $dl "$1"
+               wget --no-proxy -q -U $''"$useragent"'' -O "$dl" "$1"
           else
                if [[ -z "$http_proxy" ]]; then
-                    http_proxy=http://$PROXYIP:$PROXYPORT wget -q -U $''"$useragent"'' -O $dl "$1"
+                    http_proxy=http://"$PROXYIP":"$PROXYPORT" wget -q -U $''"$useragent"'' -O "$dl" "$1"
                else
-                    wget -q -U $''"$useragent"'' -O $dl "$1"
+                    wget -q -U $''"$useragent"'' -O "$dl" "$1"
                fi
           fi
           return $?
@@ -1855,7 +1863,7 @@ http_get() {
           if [[ -n $PROXY ]]; then
                # PROXYNODE works better than PROXYIP on modern versions of squid. \
                # We don't reuse the code in fd_socket() as there's initial CONNECT which makes problems
-               if ! exec 33<> /dev/tcp/${PROXYNODE}/${PROXYPORT}; then
+               if ! exec 33<> /dev/tcp/"${PROXYNODE}"/"${PROXYPORT}"; then
                     outln
                     pr_warning "$PROG_NAME: unable to open a socket to proxy $PROXYNODE:$PROXYPORT"
                     fileout "$jsonID" "DEBUG" "$PROG_NAME: unable to open a socket to proxy $PROXYNODE:$PROXYPORT"
@@ -1865,7 +1873,7 @@ http_get() {
                fi
           else
                IFS=/ read -r proto foo node query <<< "$1"
-               exec 33<>/dev/tcp/$node/80
+               exec 33<>/dev/tcp/"$node"/80
                printf -- "%b" "GET /$query HTTP/1.0\r\nUser-Agent: $useragent\r\nHost: $node\r\nAccept: */*\r\n\r\n" >&33
           fi
           # Strip HTTP header. When in Debug Mode we leave the raw data in place
@@ -1957,7 +1965,8 @@ http_head_printf() {
 
      [[ $DEBUG -eq 0 ]] && errfile=/dev/null
      # $node works here good as it connects via IPv6 first, then IPv4.
-     # This is a subshell, so fd 8 is not inherited
+     # This is a subshell, so fd 8 is not inherited.
+     # Again: This could be dangerous if there would be no validation for hostname and port before.
      bash -c "exec 8<>/dev/tcp/$node/80" 2>/dev/null &
      wait_kill $! $((HEADER_MAXSLEEP * 10))
      if [[ $? -ne 3 ]]; then
@@ -1965,7 +1974,7 @@ http_head_printf() {
           # to make sure there wasn't a TCP reset
           bash -c "exec 8<>/dev/tcp/$node/80" 2>/dev/null
           if [[ $? -eq 0 ]]; then
-               exec 33<>/dev/tcp/$node/80
+               exec 33<>/dev/tcp/"$node"/80
                safe_echo "HEAD ${path} HTTP/1.1\r\nUser-Agent: ${useragent}\r\nHost: ${node}\r\nAccept: */*\r\n${extra_header}\r\n\r\n" >&33 2>$errfile
                ret=0
                touch $tmpfile
@@ -2107,9 +2116,9 @@ check_revocation_crl() {
           fi
      fi
      if grep -qe '-----BEGIN CERTIFICATE-----' $TEMPDIR/intermediatecerts.pem; then
-          $OPENSSL verify -crl_check -CAfile <(cat ${ADDTL_CA_FILES//,/ } "$GOOD_CA_BUNDLE" "${tmpfile%%.crl}.pem") -untrusted $TEMPDIR/intermediatecerts.pem $HOSTCERT &> "${tmpfile%%.crl}.err"
+          $OPENSSL verify -crl_check -CAfile <(cat "${ADDTL_CA_FILES_ARRAY[@]}" "$GOOD_CA_BUNDLE" "${tmpfile%%.crl}.pem") -untrusted $TEMPDIR/intermediatecerts.pem $HOSTCERT &> "${tmpfile%%.crl}.err"
      else
-          $OPENSSL verify -crl_check -CAfile <(cat ${ADDTL_CA_FILES//,/ } "$GOOD_CA_BUNDLE" "${tmpfile%%.crl}.pem") $HOSTCERT &> "${tmpfile%%.crl}.err"
+          $OPENSSL verify -crl_check -CAfile <(cat "${ADDTL_CA_FILES_ARRAY[@]}" "$GOOD_CA_BUNDLE" "${tmpfile%%.crl}.pem") $HOSTCERT &> "${tmpfile%%.crl}.err"
      fi
      if [[ $? -eq 0 ]]; then
           out ", "
@@ -2167,14 +2176,14 @@ check_revocation_ocsp() {
                # Response appears to use SHA-1 in CertID
                $OPENSSL ocsp -no_nonce -respin "$TEMPDIR/stapled_ocsp_response.dd" \
                     -issuer $TEMPDIR/hostcert_issuer.pem -verify_other $TEMPDIR/intermediatecerts.pem \
-                    -CAfile <(cat ${ADDTL_CA_FILES//,/ } "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
+                    -CAfile <(cat "${ADDTL_CA_FILES_ARRAY[@]}" "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
                success=$?
           fi
           if [[ $success -ne 0 ]] && [[ "$stapled_response" =~ 0609608648016503040201 ]]; then
                # Response appears to use SHA-256 in CertID
                $OPENSSL ocsp -sha256 -no_nonce -respin "$TEMPDIR/stapled_ocsp_response.dd" \
                     -issuer $TEMPDIR/hostcert_issuer.pem -verify_other $TEMPDIR/intermediatecerts.pem \
-                    -CAfile <(cat ${ADDTL_CA_FILES//,/ } "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
+                    -CAfile <(cat "${ADDTL_CA_FILES_ARRAY[@]}" "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
                success=$?
           fi
      else
@@ -2205,7 +2214,7 @@ check_revocation_ocsp() {
           fi
           $openssl_bin ocsp -no_nonce ${host_header} -url "$uri" \
                -issuer $TEMPDIR/hostcert_issuer.pem -verify_other $TEMPDIR/intermediatecerts.pem \
-               -CAfile <(cat ${ADDTL_CA_FILES//,/ } "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
+               -CAfile <(cat "${ADDTL_CA_FILES_ARRAY[@]}" "$GOOD_CA_BUNDLE") -cert $HOSTCERT -text &> "$tmpfile"
           success=$?
      fi
 
@@ -3397,7 +3406,7 @@ emphasize_stuff_in_headers() (
      # Note: parens in function definition here force this into a separate
      # shell, preventing nocasematch from affecting the code outside this function
      shopt -s nocasematch
-          
+
      while [[ -n "$stuff" ]]; do
           if [[ "$stuff" =~ ^Unix|^Debian|^Win32|^Win64|^Ubuntu|^buster|^stretch|^jessie|^squeeze|^wheezy|^lenny|^SUSE|^Red\ Hat\ Enterprise\ Linux|^Red\ Hat|^CentOS|^Via|^X-Forwarded|^X-TYPO3-Parsetime|^Liferay-Portal|^X-Cache-Lookup|^X-Cache|^X-Squid|^X-Server|^X-Varnish|^X-OWA-Version|^MicrosoftSharePointTeamServices|^X-Application-Context|^X-Version|^X-Powered-By|^X-UA-Compatible|^Link|^X-DNS-Prefetch-Control|^X-Rack-Cache|^X-Runtime|^X-Pingback|^X-Permitted-Cross-Domain-Policies|^X-AspNet-Version|^X-AspNetMvc-Version|^x-note/|^x-global-transaction-id|^X-Global-Transaction-ID|^Alt-Svc|^system-wsgw-management-loopback ]]; then
                match="$BASH_REMATCH"
@@ -6057,7 +6066,7 @@ run_protocols() {
      esac
 
      # Now, we are doing a basic/pre test for TLS 1.2 and 1.3 in order not to penalize servers (medium)
-     # running TLS 1.3 only when TLS 1.2 is not offered.  0 and 5 are the return codes for
+     # running TLS 1.3-only when TLS 1.2 is not offered.  0 and 5 are the return codes for
      # TLS 1.3 support (kind of, including deprecated pre-versions of TLS 1.3)
      if [[ $(has_server_protocol tls1_2) -eq 0 ]]; then
           ret_val_tls12=0
@@ -6379,10 +6388,11 @@ sub_quic() {
                     QUIC_WAIT=5
                fi
           fi
-          OPENSSL_CONF='' $use_openssl s_client -quic -alpn h3 -connect $NODEIP:$PORT -servername $NODE </dev/null \
+          OPENSSL_CONF='' echo | $use_openssl s_client -quic -alpn h3 -connect $NODEIP:$PORT -servername $NODE -no_ign_eof \
                2>$sclient_errfile  >$sclient_outfile &
           wait_kill $! $((QUIC_WAIT * 10))
           ret=$?
+
           if [[ $ret -eq 3 ]]; then
                # process was killed
                if [[ -n "$PROXY" ]]; then
@@ -6890,6 +6900,7 @@ pr_kem_param_set_quality() {
           "SecP384r1MLKEM1024") bits=256 ;;
           "X25519Kyber768Draft00") bits=128 ;;
           "curveSM2MLKEM768") bits=192 ;;
+          "MLKEM1024X448") bits=256 ;;
      esac
      pr_kem_quality "$bits" "$kem"
 }
@@ -7053,6 +7064,7 @@ read_dhtype_from_file() {
      [[ "$kx" == "Kx=SecP384r1MLKEM1024" ]] && kx="Kx=ECDH/MLKEM"
      [[ "$kx" == "Kx=X25519Kyber768Draft00" ]] && kx="Kx=ECDH/Kyber"
      [[ "$kx" == "Kx=curveSM2MLKEM768" ]] && kx="Kx=ECDH/MLKEM"
+     [[ "$kx" == "Kx=MLKEM1024X448" ]] && kx="Kx=ECDH/MLKEM"
      tm_out "$kx"
      return 0
 }
@@ -7522,7 +7534,7 @@ run_server_preference() {
           1) fileout_rating="CRITICAL" ;;
      esac
      if "$TLS13_ONLY" && ! "$has_tls13_cipher_order"; then
-          terminal_msg="no (TLS 1.3 only)"
+          terminal_msg="no (TLS 1.3-only)"
           limitedsense=" (limited sense as client will pick)"
           fileout_msg="not a server cipher order for TLS 1.3 configured"
      elif ! "$TLS13_ONLY" && [[ -z "$cipher2" ]]; then
@@ -7569,7 +7581,7 @@ run_server_preference() {
      else
           if "$has_tls13_cipher_order"; then
                if "$TLS13_ONLY"; then
-                    out "yes (TLS 1.3 only)"
+                    out "yes (TLS 1.3-only)"
                     fileout "$jsonID" "INFO" "server (TLS 1.3)"
                else
                     pr_svrty_best "yes (OK)"
@@ -8149,9 +8161,9 @@ determine_trust() {
           # in a subshell because that should be valid here only
           (export SSL_CERT_DIR="/dev/null"; export SSL_CERT_FILE="/dev/null"
           if [[ $certificates_provided -ge 2 ]]; then
-               $OPENSSL verify $TRUSTED1ST -purpose sslserver -CAfile <(cat ${ADDTL_CA_FILES//,/ } "$bundle_fname") -untrusted $TEMPDIR/intermediatecerts.pem $HOSTCERT >$TEMPDIR/${certificate_file[i]}.1 2>$TEMPDIR/${certificate_file[i]}.2
+               $OPENSSL verify $TRUSTED1ST -purpose sslserver -CAfile <(cat "${ADDTL_CA_FILES_ARRAY[@]}" "$bundle_fname") -untrusted $TEMPDIR/intermediatecerts.pem $HOSTCERT >$TEMPDIR/${certificate_file[i]}.1 2>$TEMPDIR/${certificate_file[i]}.2
           else
-               $OPENSSL verify $TRUSTED1ST -purpose sslserver -CAfile <(cat ${ADDTL_CA_FILES//,/ } "$bundle_fname") $HOSTCERT >$TEMPDIR/${certificate_file[i]}.1 2>$TEMPDIR/${certificate_file[i]}.2
+               $OPENSSL verify $TRUSTED1ST -purpose sslserver -CAfile <(cat "${ADDTL_CA_FILES_ARRAY[@]}" "$bundle_fname") $HOSTCERT >$TEMPDIR/${certificate_file[i]}.1 2>$TEMPDIR/${certificate_file[i]}.2
           fi)
           verify_retcode[i]=$(awk '/error [1-9][0-9]? at [0-9]+ depth lookup:/ { if (!found) {print $2; found=1} }' $TEMPDIR/${certificate_file[i]}.1 $TEMPDIR/${certificate_file[i]}.2)
           [[ -z "${verify_retcode[i]}" ]] && verify_retcode[i]=0
@@ -8810,7 +8822,7 @@ get_cn_from_cert() {
      # for e.g. russian sites -esc_msb,utf8 works in an UTF8 terminal -- any way to check platform independent?
      # see x509(1ssl):
      subject="$($OPENSSL x509 -in $1 -noout -subject -nameopt multiline,-align,sname,-esc_msb,utf8,-space_eq 2>>$ERRFILE)"
-     echo "$(awk -F'=' '/CN=/ { print $2 }' <<< "$subject" | tr '\n' ' ')"
+     echo "$(awk '/^[[:space:]]*CN=/ { sub(/^[[:space:]]*CN=/, ""); print }' <<< "$subject" | tr '\n' ' ')"
      return 0
 }
 
@@ -10916,8 +10928,8 @@ run_server_defaults() {
      if [[ $tls_extensions =~ \#23 ]]; then
           if "$TLS13_ONLY"; then
                # this shouldn't happen
-               fileout "$jsonID" "LOW" "Misconfiguration: Extended master secret extension detected for TLS 1.3 only"
-               debugme outln "${spaces}Misconfiguration: Extended master secret extension detected for TLS 1.3 only"
+               fileout "$jsonID" "LOW" "Misconfiguration: Extended master secret extension detected for TLS 1.3-only"
+               debugme outln "${spaces}Misconfiguration: Extended master secret extension detected for TLS 1.3-only"
           else
                if grep -qE 'Protocol.*(TLSv1.)' $TEMPDIR/$NODEIP.parse_tls_serverhello.txt ; then
                     fileout "$jsonID" "INFO" "Extended master secret extension detected"
@@ -11175,13 +11187,13 @@ run_fs() {
      local fs_cipher_list="DHE-DSS-AES128-GCM-SHA256:DHE-DSS-AES128-SHA256:DHE-DSS-AES128-SHA:DHE-DSS-AES256-GCM-SHA384:DHE-DSS-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-DSS-CAMELLIA128-SHA256:DHE-DSS-CAMELLIA128-SHA:DHE-DSS-CAMELLIA256-SHA256:DHE-DSS-CAMELLIA256-SHA:DHE-DSS-SEED-SHA:DHE-RSA-AES128-CCM8:DHE-RSA-AES128-CCM:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-CCM8:DHE-RSA-AES256-CCM:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-CAMELLIA128-SHA256:DHE-RSA-CAMELLIA128-SHA:DHE-RSA-CAMELLIA256-SHA256:DHE-RSA-CAMELLIA256-SHA:DHE-RSA-CHACHA20-POLY1305-OLD:DHE-RSA-CHACHA20-POLY1305:DHE-RSA-SEED-SHA:ECDHE-ECDSA-AES128-CCM8:ECDHE-ECDSA-AES128-CCM:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-ECDSA-AES256-CCM8:ECDHE-ECDSA-AES256-CCM:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-ECDSA-CAMELLIA128-SHA256:ECDHE-ECDSA-CAMELLIA256-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305-OLD:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-RSA-CAMELLIA128-SHA256:ECDHE-RSA-CAMELLIA256-SHA384:ECDHE-RSA-CHACHA20-POLY1305-OLD:ECDHE-RSA-CHACHA20-POLY1305"
      local fs_hex_cipher_list="" ciphers_to_test tls13_ciphers_to_test
      local ecdhe_cipher_list="" tls13_cipher_list="" ecdhe_cipher_list_hex="" ffdhe_cipher_list_hex=""
-     local curves_hex=("00,01" "00,02" "00,03" "00,04" "00,05" "00,06" "00,07" "00,08" "00,09" "00,0a" "00,0b" "00,0c" "00,0d" "00,0e" "00,0f" "00,10" "00,11" "00,12" "00,13" "00,14" "00,15" "00,16" "00,17" "00,18" "00,19" "00,1a" "00,1b" "00,1c" "00,1d" "00,1e" "00,1f" "00,20" "00,21" "00,29" "02,00" "02,01" "02,02" "11,e9" "11,ea" "11,eb" "11,ec" "11,ed" "11,ee" "63,99")
-     local -a curves_ossl=("sect163k1" "sect163r1" "sect163r2" "sect193r1" "sect193r2" "sect233k1" "sect233r1" "sect239k1" "sect283k1" "sect283r1" "sect409k1" "sect409r1" "sect571k1" "sect571r1" "secp160k1" "secp160r1" "secp160r2" "secp192k1" "prime192v1" "secp224k1" "secp224r1" "secp256k1" "prime256v1" "secp384r1" "secp521r1" "brainpoolP256r1" "brainpoolP384r1" "brainpoolP512r1" "X25519" "X448" "brainpoolP256r1tls13" "brainpoolP384r1tls13" "brainpoolP512r1tls13" "curveSM2" "MLKEM512" "MLKEM768" "MLKEM1024" "SecP256r1MLKEM512" "MLKEM512X25519" "SecP256r1MLKEM768" "X25519MLKEM768" "SecP384r1MLKEM1024" "curveSM2MLKEM768" "X25519Kyber768Draft00")
-     local -a curves_ossl_output=("K-163" "sect163r1" "B-163" "sect193r1" "sect193r2" "K-233" "B-233" "sect239k1" "K-283" "B-283" "K-409" "B-409" "K-571" "B-571" "secp160k1" "secp160r1" "secp160r2" "secp192k1" "P-192" "secp224k1" "P-224" "secp256k1" "P-256" "P-384" "P-521" "brainpoolP256r1" "brainpoolP384r1" "brainpoolP512r1" "X25519" "X448" "brainpoolP256r1tls13" "brainpoolP384r1tls13" "brainpoolP512r1tls13" "curveSM2" "MLKEM512" "MLKEM768" "MLKEM1024" "SecP256r1MLKEM512" "MLKEM512X25519" "SecP256r1MLKEM768" "X25519MLKEM768" "SecP384r1MLKEM1024" "curveSM2MLKEM768" "X25519Kyber768Draft00")
-     local -ai curves_bits=(163 162 163 193 193 232 233 238 281 282 407 409 570 570 161 161 161 192 192 225 224 256 256 384 521 256 384 512 253 448 256 384 512 256 128 192 256 128 128 192 192 256 192 128)
+     local curves_hex=("00,01" "00,02" "00,03" "00,04" "00,05" "00,06" "00,07" "00,08" "00,09" "00,0a" "00,0b" "00,0c" "00,0d" "00,0e" "00,0f" "00,10" "00,11" "00,12" "00,13" "00,14" "00,15" "00,16" "00,17" "00,18" "00,19" "00,1a" "00,1b" "00,1c" "00,1d" "00,1e" "00,1f" "00,20" "00,21" "00,29" "02,00" "02,01" "02,02" "11,e9" "11,ea" "11,eb" "11,ec" "11,ed" "11,ee" "11,ef" "63,99")
+     local -a curves_ossl=("sect163k1" "sect163r1" "sect163r2" "sect193r1" "sect193r2" "sect233k1" "sect233r1" "sect239k1" "sect283k1" "sect283r1" "sect409k1" "sect409r1" "sect571k1" "sect571r1" "secp160k1" "secp160r1" "secp160r2" "secp192k1" "prime192v1" "secp224k1" "secp224r1" "secp256k1" "prime256v1" "secp384r1" "secp521r1" "brainpoolP256r1" "brainpoolP384r1" "brainpoolP512r1" "X25519" "X448" "brainpoolP256r1tls13" "brainpoolP384r1tls13" "brainpoolP512r1tls13" "curveSM2" "MLKEM512" "MLKEM768" "MLKEM1024" "SecP256r1MLKEM512" "MLKEM512X25519" "SecP256r1MLKEM768" "X25519MLKEM768" "SecP384r1MLKEM1024" "curveSM2MLKEM768" "MLKEM1024X448" "X25519Kyber768Draft00")
+     local -a curves_ossl_output=("K-163" "sect163r1" "B-163" "sect193r1" "sect193r2" "K-233" "B-233" "sect239k1" "K-283" "B-283" "K-409" "B-409" "K-571" "B-571" "secp160k1" "secp160r1" "secp160r2" "secp192k1" "P-192" "secp224k1" "P-224" "secp256k1" "P-256" "P-384" "P-521" "brainpoolP256r1" "brainpoolP384r1" "brainpoolP512r1" "X25519" "X448" "brainpoolP256r1tls13" "brainpoolP384r1tls13" "brainpoolP512r1tls13" "curveSM2" "MLKEM512" "MLKEM768" "MLKEM1024" "SecP256r1MLKEM512" "MLKEM512X25519" "SecP256r1MLKEM768" "X25519MLKEM768" "SecP384r1MLKEM1024" "curveSM2MLKEM768" "MLKEM1024X448" "X25519Kyber768Draft00")
+     local -ai curves_bits=(163 162 163 193 193 232 233 238 281 282 407 409 570 570 161 161 161 192 192 225 224 256 256 384 521 256 384 512 253 448 256 384 512 256 128 192 256 128 128 192 192 256 192 256 128)
      # Many curves have been deprecated, and RFC 8446, Appendix B.3.1.4, states
      # that these curves MUST NOT be offered in a TLS 1.3 ClientHello.
-     local -a curves_deprecated=("true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "false" "false" "false" "true" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false")
+     local -a curves_deprecated=("true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true" "false" "false" "false" "true" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false")
      local -a ffdhe_groups_hex=("01,00" "01,01" "01,02" "01,03" "01,04")
      local -a ffdhe_groups_output=("ffdhe2048" "ffdhe3072" "ffdhe4096" "ffdhe6144" "ffdhe8192")
      local -a supported_curve
@@ -12497,6 +12509,51 @@ starttls_telnet_dialog() {
      return $ret
 }
 
+
+# function to check for availability of a port. It doesn't block as fd_socket() does.
+# Also timeout isn't needed which is not a/v under MacOS.
+# - arg1: ip address (v4/v6)
+# - arg2: port
+# - arg3: timeout in 100ms
+#
+is_tcp_port_open() {
+     local -i fd=42
+     local host="$(tr -d '[]' <<< $1)"
+     local port=$2
+     local hms=$3
+     local elapsed=0
+
+     # vars need to be validated here, which happened in validate*()
+     eval "exec ${fd}<>/dev/tcp/${host}/${port}" 2>/dev/null &
+     local pid=$!
+
+     while kill -0 "$pid" 2>/dev/null; do
+          if (( elapsed >= $hms )); then
+               kill "$pid" 2>/dev/null
+               wait "$pid" 2>/dev/null
+               debugme echo "TIMEOUT"
+               return 3
+          fi
+
+          sleep 0.1
+          ((elapsed++))
+     done
+
+     wait "$pid"
+     local status=$?
+
+     if (( status == 0 )); then
+          debugme echo "CONNECTED"
+          exec 42<&-
+          exec 42>&-
+     else
+          debugme echo "FAILED"
+          status=2
+     fi
+
+     return "$status"
+}
+
 # arg1: fd for socket (which we don't use yet. It's a hassle, not clear whether it works under every bash version
 # arg2: optional: for STARTTLS additional command to be injected
 # return values:
@@ -12506,7 +12563,7 @@ starttls_telnet_dialog() {
 #    6: if opening the socket caused a problem
 #
 fd_socket() {
-     local fd="$1"
+     local fd="$1"                                     # not used yet
      local payload="$2"
      local proyxline=""
      local nodeip="$(tr -d '[]' <<< $NODEIP)"          # sockets do not need the square brackets we have of IPv6 addresses
@@ -12517,7 +12574,7 @@ fd_socket() {
      fi
      if [[ -n "$PROXY" ]]; then
           # PROXYNODE works better than PROXYIP on modern versions of squid
-          if ! exec 5<> /dev/tcp/${PROXYNODE}/${PROXYPORT}; then
+          if ! exec 5<> /dev/tcp/"${PROXYNODE}"/"${PROXYPORT}"; then
                outln
                pr_warning "$PROG_NAME: unable to open a socket to proxy $PROXYNODE:$PROXYPORT"
                return 6
@@ -12546,28 +12603,34 @@ fd_socket() {
                     break
                fi
           done
-     # For the following exec commands: 2>/dev/null would remove a potential error message, but would disable
-     # debugging.
-     # First we check whether a socket timeout was specified. We exec the connect in a subshell,
-     # and see whether. If not we take the emergency exit: fatal() in connectivity_problem.
-     # Otherwise (no socket timeout) OR when we survived that we do that without subshell.
-     # proceed with the "usual case", see below.
-     elif [[ -n "$SOCKET_TIMEOUT" ]]; then
-          if ! $TIMEOUT_CMD $SOCKET_TIMEOUT bash -c "exec 5<>/dev/tcp/$nodeip/$PORT"; then
+     else
+          # no proxy
+
+          # For the following exec command it should be noted: 2>/dev/null would remove
+          # a potential error message, but would disable # debugging.
+
+          # First we check whether a socket timeout was specified. We exec the connect in a subshell, and
+          # check whether it comes back. If not we take the emergency exit: fatal() in connectivity_problem.
+          # Otherwise (no socket timeout) OR when we survived that we do that without subshell.
+          # proceed with the "usual case", see below.
+
+          if [[ -n "$SOCKET_TIMEOUT" ]]; then
+               if ! $TIMEOUT_CMD $SOCKET_TIMEOUT bash -c "exec 5<>/dev/tcp/$nodeip/$PORT"; then
+                    ((NR_SOCKET_FAIL++))
+                    connectivity_problem $NR_SOCKET_FAIL $MAX_SOCKET_FAIL "TCP connect problem" "repeated TCP connect problems (connect timeout), giving up"
+                    outln
+                    pr_warning "Unable to open a socket to $NODEIP:$PORT. "
+                    return 6
+               fi
+          elif ! exec 5<>/dev/tcp/"$nodeip"/"$PORT"; then
+               # this can run into a long network timeout. We can't put this in the background because we
+               # would need the fd of the socket which is in the subshell
                ((NR_SOCKET_FAIL++))
-               connectivity_problem $NR_SOCKET_FAIL $MAX_SOCKET_FAIL "TCP connect problem" "repeated TCP connect problems (connect timeout), giving up"
+               connectivity_problem $NR_SOCKET_FAIL $MAX_SOCKET_FAIL "TCP connect problem" "repeated TCP connect problems, giving up"
                outln
-               pr_warning "Unable to open a socket to $NODEIP:$PORT. "
+               pr_warning "Unable to open a TCP socket to $NODEIP:$PORT. "
                return 6
           fi
-     fi
-     # Now comes the usual case
-     if [[ -z "$PROXY" ]] && ! exec 5<>/dev/tcp/$nodeip/$PORT; then
-          ((NR_SOCKET_FAIL++))
-          connectivity_problem $NR_SOCKET_FAIL $MAX_SOCKET_FAIL "TCP connect problem" "repeated TCP connect problems, giving up"
-          outln
-          pr_warning "Unable to open a socket to $NODEIP:$PORT. "
-          return 6
      fi
 
      if [[ -n "$STARTTLS" ]]; then
@@ -15437,6 +15500,7 @@ parse_tls_serverhello() {
                                          "11EC") echo -n "X25519MLKEM768" >> $TMPFILE ;;
                                          "11ED") echo -n "SecP384r1MLKEM1024" >> $TMPFILE ;;
                                          "11EE") echo -n "curveSM2MLKEM768" >> $TMPFILE ;;
+                                         "11EF") echo -n "MLKEM1024X448" >> $TMPFILE ;;
                                          "6399") echo -n "X25519Kyber768Draft00" >> $TMPFILE ;;
                                               *) echo -n "unknown (${tls_serverhello_ascii:offset:4})" >> $TMPFILE ;;
                                     esac
@@ -15543,6 +15607,7 @@ parse_tls_serverhello() {
                                     4588) dh_bits=192 ; named_curve_str="X25519MLKEM768" ;;
                                     4589) dh_bits=256 ; named_curve_str="SecP384r1MLKEM1024" ;;
                                     4590) dh_bits=192 ; named_curve_str="curveSM2MLKEM768" ;;
+                                    4591) dh_bits=256 ; named_curve_str="MLKEM1024X448" ;;
                                     25497) dh_bits=128 ; named_curve_str="X25519Kyber768Draft00" ;;
                                     *) named_curve_str="" ; named_curve_oid="" ;;
                                esac
@@ -15595,7 +15660,7 @@ parse_tls_serverhello() {
                                          [[ $DEBUG -ge 1 ]] && tmpfile_handle ${FUNCNAME[0]}.txt
                                          return 1
                                     fi
-                                    if [[ ! "$OSSL_SUPPORTED_CURVES" =~ MLKEM ]]; then
+                                    if ! "$HAS_PKUTIL_DECAP" || [[ ! "$OSSL_SUPPORTED_CURVES" =~ MLKEM ]]; then
                                          debugme prln_warning "Your $OPENSSL doesn't support ML-KEM"
                                     else
                                          key_bitstring="3059301306072a8648ce3d020106082a8648ce3d030107034200${tls_serverhello_ascii:offset:130}"
@@ -15615,7 +15680,7 @@ parse_tls_serverhello() {
                                          [[ $DEBUG -ge 1 ]] && tmpfile_handle ${FUNCNAME[0]}.txt
                                          return 1
                                     fi
-                                    if [[ ! "$OSSL_SUPPORTED_CURVES" =~ MLKEM ]]; then
+                                    if ! "$HAS_PKUTIL_DECAP" || [[ ! "$OSSL_SUPPORTED_CURVES" =~ MLKEM ]]; then
                                          debugme prln_warning "Your $OPENSSL doesn't support ML-KEM"
                                     elif ! "$HAS_X25519"; then
                                         debugme prln_warning "Your $OPENSSL doesn't support X25519"
@@ -15708,6 +15773,27 @@ parse_tls_serverhello() {
                                               key_bitstring="--BEGIN HYBRID CIPHERTEXT--${key_bitstring}"
                                               key_bitstring+="-----BEGIN CIPHERTEXT------${tls_serverhello_ascii:$((offset+130)):2176}-----END CIPHERTEXT------"
                                               key_bitstring+="--END HYBRID CIPHERTEXT--"
+                                         fi
+                                    fi
+                               elif [[ $named_curve -eq 4591 ]]; then
+                                    # The server's key share is the concatenation of a ML-KEM-1024 ciphertext and a X448 public key.
+                                    if [[ $msg_len -ne 3248 ]]; then
+                                         debugme tmln_warning "Malformed key share extension."
+                                         [[ $DEBUG -ge 1 ]] && tmpfile_handle ${FUNCNAME[0]}.txt
+                                         return 1
+                                    fi
+                                    if ! "$HAS_PKUTIL_DECAP" || [[ ! "$OSSL_SUPPORTED_CURVES" =~ MLKEM ]]; then
+                                         debugme prln_warning "Your $OPENSSL doesn't support ML-KEM"
+                                    elif ! "$HAS_X448"; then
+                                        debugme prln_warning "Your $OPENSSL doesn't support X448"
+                                    else
+                                         key_bitstring="3042300506032b656f033900${tls_serverhello_ascii:$((offset+3136)):112}"
+                                         key_bitstring="$(hex2binary "$key_bitstring" | $OPENSSL pkey -pubin -inform DER 2>$ERRFILE)"
+                                         if [[ -z "$key_bitstring" ]]; then
+                                              debugme prln_warning "Your $OPENSSL doesn't support X448"
+                                         else
+                                              key_bitstring="-----BEGIN CIPHERTEXT------${tls_serverhello_ascii:offset:3136}-----END CIPHERTEXT------${key_bitstring}"
+                                              key_bitstring="--BEGIN HYBRID CIPHERTEXT--${key_bitstring}--END HYBRID CIPHERTEXT--"
                                          fi
                                     fi
                                fi
@@ -16733,10 +16819,10 @@ prepare_tls_clienthello() {
                     # regardless of whether testssl.sh can decrypt the response.
                     extension_supported_groups="
                     00,0a,                      # Type: Supported Groups, see RFC 8446
-                    00,2c, 00,2a,               # lengths
+                    00,2e, 00,2c,               # lengths
                     00,1d, 00,17, 00,1e, 00,18, 00,19, 00,1f, 00,20, 00,21,
                     01,00, 01,01, 02,00, 02,01, 02,02, 11,e9, 11,ea, 11,eb,
-                    11,ec, 11,ed, 63,99, 00,29, 11,ee"
+                    11,ec, 11,ed, 63,99, 00,29, 11,ee, 11,ef"
                elif [[ "$process_full" == all+ ]]; then
                     # Since the response needs to be decrypted, only include groups that can be
                     # decrypted using $OPENSSL. Place X25519 and X448 early in the list, if they
@@ -16749,6 +16835,7 @@ prepare_tls_clienthello() {
                     "$HAS_X25519" && extension_supported_groups=", 00,1d$extension_supported_groups"
                     if "$HAS_PKUTIL_DECAP" && [[ "$OSSL_SUPPORTED_CURVES" =~ MLKEM ]]; then
                          "$HAS_X25519" && extension_supported_groups+=", 11,ea, 11,ec"
+                         "$HAS_X448" && extension_supported_groups+=", 11,ef"
                          extension_supported_groups+=", 02,00, 02,01, 02,02, 11,e9, 11,eb, 11,ed"
                     fi
                     extension_supported_groups="00,0a, 00,$(printf "%02x" $((2+2*${#extension_supported_groups}/7))), 00,$(printf "%02x" $((2*${#extension_supported_groups}/7)))$extension_supported_groups"
@@ -16770,8 +16857,8 @@ prepare_tls_clienthello() {
                          extension_supported_groups+=", 00,1d"
                     fi
                     ! "$HAS_X448" && extension_supported_groups+=", 00,1e"
-                    extension_supported_groups+=", 02,00, 02,01, 02,02, 11,e9, 11,ea, 11,eb, 11,ec, 11,ed, 63,99, 00,29, 11,ee"
-                    extension_supported_groups="00,0a, 00,2c, 00,2a$extension_supported_groups"
+                    extension_supported_groups+=", 02,00, 02,01, 02,02, 11,e9, 11,ea, 11,eb, 11,ec, 11,ed, 63,99, 00,29, 11,ee, 11,ef"
+                    extension_supported_groups="00,0a, 00,2e, 00,2c$extension_supported_groups"
                fi
 
                code2network "$extension_supported_groups"
@@ -17626,6 +17713,20 @@ receive_app_data() {
 # General overview which browser "supports" which vulnerability:
 # https://en.wikipedia.org/wiki/Transport_Layer_Security#Web_browsers
 
+# first a helper function which saves some handshakes (visible via -U --debug=4)
+#
+shortcut_tls13_only() {
+     local jsonID="$1"
+     local cve="$2"
+     local cwe="$3"
+     local added_msg="$4"
+
+     pr_svrty_best "not vulnerable (OK)"
+     fileout "$jsonID" "OK" "not vulnerable${added_msg}" "$cve" "$cwe"
+     outln "$added_msg"
+     return 0
+}
+
 # mainly adapted from https://gist.github.com/takeshixx/10107280
 #
 run_heartbleed(){
@@ -17640,6 +17741,9 @@ run_heartbleed(){
      local hint=""
 
      pr_bold " Heartbleed"; out " ($cve)                "
+
+     # saves 2 client hellos:
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", TLS 1.3-only host" && return 0
 
      if [[ "$STARTTLS_PROTOCOL" =~ irc ]]; then
           prln_local_problem "STARTTLS/$STARTTLS_PROTOCOL and --ssl-native collide here"
@@ -17749,6 +17853,9 @@ run_ccs_injection(){
      local hint=""
 
      pr_bold " CCS"; out " ($cve)                       "
+
+     # there were 18 unnecessary handshakes otherwise:
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", TLS 1.3-only host" && return 0
 
      if [[ "$STARTTLS_PROTOCOL" =~ irc ]]; then
           prln_local_problem "STARTTLS/$STARTTLS_PROTOCOL and --ssl-native collide here"
@@ -17945,6 +18052,9 @@ run_ticketbleed() {
 
      [[ -n "$STARTTLS" ]] && return 0
      pr_bold " Ticketbleed"; out " ($cve), experimental "
+
+     # save 2 client hellos
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", TLS 1.3-only host unaffected" && return 0
 
      if [[ "$SERVICE" != HTTP ]] && [[ "$CLIENT_AUTH" != required ]]; then
           outln "(applicable only for HTTP service)"
@@ -18289,11 +18399,7 @@ run_renego() {
      jsonID="secure_renego"
 
      if "$TLS13_ONLY"; then
-          # https://www.openssl.org/blog/blog/2018/02/08/tlsv1.3/
-          pr_svrty_best "not vulnerable (OK)"
-          [[ $DEBUG -ge 1 ]] && out ", no renegotiation support in TLS 1.3 only servers"
-          outln
-          fileout "$jsonID" "OK" "TLS 1.3 only server" "$cve" "$cwe"
+          shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", no renegotiation support in TLS 1.3-only servers"
      else
           # first fingerprint for the Line "Secure Renegotiation IS NOT" or "Secure Renegotiation IS "
           $OPENSSL s_client $(s_client_options "$proto $STARTTLS $BUGS -connect $NODEIP:$PORT $PROXY $SNI") 2>&1 </dev/null >$TMPFILE 2>$ERRFILE
@@ -18354,10 +18460,7 @@ run_renego() {
      esac
 
      if "$TLS13_ONLY"; then
-          pr_svrty_best "not vulnerable (OK)"
-          [[ $DEBUG -ge 1 ]] && out ", no renegotiation support in TLS 1.3 only servers"
-          outln
-          fileout "$jsonID" "OK" "not vulnerable, TLS 1.3 only" "$cve" "$cwe"
+          shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", no renegotiation support in TLS 1.3-only servers"
      elif [[ "$CLIENT_AUTH" == required ]] && [[ -z "$MTLS" ]]; then
           prln_warning "not having provided client certificate and private key file, the client x509-based authentication prevents this from being tested"
           fileout "$jsonID" "WARN" "not having provided client certificate and private key file, the client x509-based authentication prevents this from being tested"
@@ -18501,13 +18604,7 @@ run_crime() {
      pr_bold " CRIME, TLS " ; out "($cve)                "
      jsonID="CRIME_TLS"
 
-     if "$TLS13_ONLY"; then
-          pr_svrty_best "not vulnerable (OK)"
-          [[ $DEBUG -ge 1 ]] && out ", no compression in TLS 1.3 only servers"
-          outln
-          fileout "$jsonID" "OK" "TLS 1.3 only server" "$cve" "$cwe"
-          return 0
-     fi
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", no compression in TLS 1.3eonly servers" && return 0
 
      if ! "$HAS_ZLIB"; then
           if "$SSL_NATIVE"; then
@@ -18767,14 +18864,7 @@ run_sweet32() {
 
      pr_bold " SWEET32"; out " (${cve// /, })    "
 
-     if "$TLS13_ONLY"; then
-          # Unfortunately there's no restriction using TLS 1.2 with $sweet32_ciphers
-          pr_svrty_best "not vulnerable (OK)"
-          [[ $DEBUG -ge 1 ]] && out ", TLS 1.3 doesn't offer such ciphers"
-          outln
-          fileout "$jsonID" "OK" "not vulnerable" "$cve" "$cwe"
-          return 0
-     fi
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", TLS 1.3-only servers don't offer ciphers" && return 0
 
      "$SSL_NATIVE" && using_sockets=false
      # The openssl binary distributed has almost everything we need (PSK, KRB5 ciphers and feff, ffe0 are typically missing).
@@ -19063,7 +19153,7 @@ run_tls_fallback_scsv() {
                     fileout "$jsonID" "HIGH" "TLS 1.3, 1.2, 1.1, 1.0 not supported"
                else
                     # TLS 1.2, TLS 1.1, and TLS 1 are not supported, but can't tell whether TLS 1.3 is supported.
-                    # This could be a TLS 1.3 only server, an SSLv3 only server (if SSLv3 support cannot be tested),
+                    # This could be a TLS 1.3-only server, an SSLv3 only server (if SSLv3 support cannot be tested),
                     # or a server that does not support SSLv3 or any TLS protocol. So, don't report a severity,
                     # since this could either be good or bad.
                     outln "No fallback possible, TLS 1.2, TLS 1.1, and TLS 1 not supported"
@@ -19241,13 +19331,7 @@ run_freak() {
 
      pr_bold " FREAK"; out " ($cve)                     "
 
-     if "$TLS13_ONLY"; then
-          pr_svrty_best "not vulnerable (OK)"
-          [[ $DEBUG -ge 1 ]] && out ", TLS 1.3 only server"
-          outln
-          fileout "$jsonID" "OK" "not vulnerable" "$cve" "$cwe"
-          return 0
-     fi
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", TLS 1.3-only server" && return 0
 
      "$SSL_NATIVE" && using_sockets=false
      if "$using_sockets"; then
@@ -19454,6 +19538,10 @@ run_logjam() {
      local jsonID2="${jsonID}-common_primes"
 
      pr_bold " LOGJAM"; out " ($cve), experimental      "
+
+     # saves 2 handshake with RSA cipher but if we'd keep the cipher list offered by the server
+     # we could also save those in other constellations
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", TLS 1.3-only hosts don't support export DH ciphers / downgrades" && return 0
 
      "$SSL_NATIVE" && using_sockets=false
      # Also as the openssl binary distributed has everything we need measurements show that
@@ -20043,6 +20131,8 @@ run_winshock() {
 
      pr_bold " Winshock"; out " ($cve), experimental    "
 
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" "- TLS 1.3-only host" && return 0
+
      if [[ "$(has_server_protocol "tls1_3")" -eq 0 ]] ; then
           # There's no MS server supporting TLS 1.3. Winshock was way back in time
           pr_svrty_best "not vulnerable (OK)"
@@ -20225,13 +20315,7 @@ run_lucky13() {
 
      pr_bold " LUCKY13"; out " ($cve), experimental     "
 
-     if "$TLS13_ONLY"; then
-          pr_svrty_best "not vulnerable (OK)"
-          [[ $DEBUG -ge 1 ]] && out ", no CBC ciphers in TLS 1.3 only servers"
-          outln
-          fileout "$jsonID" "OK" "not vulnerable, TLS 1.3 only" "$cve" "$cwe"
-          return 0
-     fi
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", no CBC ciphers in TLS 1.3-only servers" && return 0
 
      "$SSL_NATIVE" && using_sockets=false
      # The openssl binary distributed has almost everything we need (PSK, KRB5 ciphers and feff, ffe0 are typically missing).
@@ -20307,13 +20391,7 @@ run_rc4() {
 
      pr_bold " RC4"; out " (${cve// /, })        "
 
-     if "$TLS13_ONLY"; then
-          pr_svrty_best "not vulnerable (OK)"
-          [[ $DEBUG -ge 1 ]] && out ", no RC4 support in TLS 1.3 only servers"
-          outln
-          fileout "$jsonID" "OK" "not vulnerable, TLS 1.3 only" "$cve" "$cwe"
-          return 0
-     fi
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", no RC4 support in TLS 1.3 only servers" && return 0
 
      # Get a list of all the cipher suites to test. #FIXME: This is rather ineffective as RC4 ciphers won't change.
      # We should instead build a fixed list here like @ other functions
@@ -21019,6 +21097,10 @@ run_robot() {
 
      pr_bold " ROBOT                                     "
 
+     # saves 2 handshake with RSA cipher but if we keep the cipher list offered by the server
+     # we could also save those in other scenarios
+     "$TLS13_ONLY" && shortcut_tls13_only "$jsonID" "$cve" "$cwe" ", TLS 1.3-only hosts have no RSA ciphers" && return 0
+
      if [[ "$STARTTLS_PROTOCOL" =~ irc ]]; then
           prln_local_problem "STARTTLS/$STARTTLS_PROTOCOL and --ssl-native collide here"
           return 1
@@ -21581,7 +21663,7 @@ find_openssl_binary() {
 
      OPENSSL_NR_CIPHERS=$(count_ciphers "$(actually_supported_osslciphers 'ALL:COMPLEMENTOFALL' 'ALL')")
      if [[ $OPENSSL_NR_CIPHERS -le 140 ]]; then
-          [[ "$OSSL_NAME" =~ LibreSSL ]] && [[ ${OSSL_VER//./} -ge 210 ]] && HAS_DH_BITS=true
+          [[ "$OSSL_NAME" =~ LibreSSL ]] && [[ $OSSL_VER_MAJOR -gt 2 || ${OSSL_VER_MINOR%%\.*} -ge 1 ]] && HAS_DH_BITS=true
           if "$SSL_NATIVE"; then
                outln
                pr_warning "LibreSSL/OpenSSL in native ssl mode with poor cipher support is not a good choice for testing INSECURE features!"
@@ -21932,6 +22014,7 @@ tuning / connect options (most also can be preset via environment variables):
      --ids-friendly                skips a few vulnerability checks which may cause IDSs to block the scanning IP
      --phone-out                   allow to contact external servers for CRL download, querying OCSP responder and the HSTS preload API
      --add-ca <CA files|CA dir>    path to <CAdir> with *.pem or a comma separated list of CA files to include in trust check
+                                  quote the argument if file or directory names contain spaces
      --mtls <CLIENT CERT file>     path to <CLIENT CERT> file in PEM format containing unencrypted certificate key (beta)
      --basicauth <user:pass>       provide HTTP basic auth information
      --reqheader <header>          add custom http request headers
@@ -22442,10 +22525,86 @@ ignore_no_or_lame() {
      fi
 }
 
-# arg1: URI
+
+# Convert a hostname to punycode if it contains non-ASCII characters.
+# Must be called before every validate_hostname() so the gate sees the converted value.
+# - arg1: name of the variable to update with the converted value
+# - arg2: the hostname value
+# Emits warnings if the conversion didn't happen.
+#
+idn_convert() {
+     local varname="$1"
+     local node="$2"
+     local node_tmp=""
+
+     # We check for non-ASCII chars now. If there are some we'll try to convert it if IDN/IDN2 is installed
+     # If not, we'll continue. Hoping later that dig can use it. If not the error handler will tell.
+     # Honestly we don't care whether it's IDN2008 or IDN2003 or Emoji domains as long as it works.
+     # We try to resolve anything supplied, supposed it passes the security gate
+     [[ "$node" == *[![:ascii:]]* ]] || return 0
+
+     if ! "$HAS_IDN2" && ! "$HAS_IDN"; then
+          prln_warning " URI contains non-ASCII characters and libidn/libidn2 not available."
+          outln " Trying to feed the resolver without converted \"$node\" ...\n"
+          #ToDo: fileout is missing
+          node_tmp="$node"
+     elif "$HAS_IDN2"; then
+          node_tmp="$(idn2 "$node" 2>/dev/null)"
+     fi
+     if "$HAS_IDN" && [[ -z "$node_tmp" ]]; then
+          node_tmp="$(idn "$node" 2>/dev/null)"
+     fi
+     if [[ -z "$node_tmp" ]]; then
+          prln_warning " URI contains non-ASCII characters and IDN conversion failed."
+          outln " Trying to feed the resolver without converted \"$node\" ...\n"
+          fileout hostname_problem "WARN" "URI contains non-ASCII characters and IDN conversion failed, continuing"
+          node_tmp="$node"
+     fi
+     # writes e.g. $node_tmp to global NODE
+     printf -v "$varname" '%s' "$node_tmp"
+}
+
+
+# Generic function for ANY hostname
+#
+validate_hostname() {
+     local host_re='^[][a-zA-Z0-9.:-]+$'
+     local node="$1"
+
+     # Anti injection gate on the final NODE. First RE, then we handle IDN chars (printable).
+     # If both do not match we label the hostname as invalid. CRTL chars aren't allowed in part 2,
+     # also if DNS resolution would probably not succeed.
+     #
+     # Part 1 is the primary injection gate: "is this outside the known-safe charset?" If it doesn't match the RE,
+     #          we check part 2. Otherwise we return 0 (unless the hostname starts with a dash)
+     # Part 2 is the IDN allowance: "does this contain a non-ASCII byte?" If so, it's a legitimate internationalized
+     #          domain (raw) we accept it. No crtl chars allowed though.
+
+     if ! [[ "$node" =~ $host_re ]] && ! printf '%s' "$node" | LC_ALL=C grep -q '[^[:print:][:cntrl:]]'; then
+          return 1
+     elif [[ "$node" == -* ]]; then
+          # we allow dashes but not at the start
+          return 1
+     fi
+     return 0
+}
+
+
+# Generic function for ANY port number
+#
+validate_portnumber() {
+          local port="$1"
+
+          is_number "$port" || return 1
+          [[ "$port" -lt 65536 ]] || return 2
+          return 0
+}
+
+
+# arg1: URI. Does also validate hostname and port
+#
 parse_hn_port() {
      local tmp_port
-     local node_tmp=""
 
      NODE="$1"
      NODE="$(tolower "$NODE")"          # Lowercase
@@ -22461,7 +22620,7 @@ parse_hn_port() {
      fi
      # Was an IPv6 address supplied like [AA:BB:CC::]:port ?
      if grep -q ']' <<< "$NODE"; then
-          tmp_port=$(printf "$NODE" | sed 's/\[.*\]//' | sed 's/://')
+          tmp_port=$(printf '%s' "$NODE" | sed 's/\[.*\]//' | sed 's/://')
           # determine v6 port, supposed it was supplied additionally
           if [[ -n "$tmp_port" ]]; then
                PORT=$tmp_port
@@ -22476,38 +22635,23 @@ parse_hn_port() {
 
      NODE="${NODE%%.}"                  # strip trailing "." if supplied
 
-     # We check for non-ASCII chars now. If there are some we'll try to convert it if IDN/IDN2 is installed
-     # If not, we'll continue. Hoping later that dig can use it. If not the error handler will tell
-     # Honestly we don't care whether it's IDN2008 or IDN2003 or Emoji domains as long as it works.
-     # So we try to resolve anything supplied. If it can't  our resolver error handler takes care
-     if [[ "$NODE" == *[![:ascii:]]* ]]; then
-          if ! "$HAS_IDN2" && ! "$HAS_IDN"; then
-               prln_warning " URI contains non-ASCII characters and libidn/libidn2 not available."
-               outln " Trying to feed the resolver without converted \"$NODE\" ...\n"
-               #ToDo: fileout is missing
-               node_tmp="$NODE"
-          elif "$HAS_IDN2"; then
-               node_tmp="$(idn2 "$NODE" 2>/dev/null)"
-          fi
-          if "$HAS_IDN" && [[ -z "$node_tmp" ]]; then
-               node_tmp="$(idn "$NODE" 2>/dev/null)"
-          fi
-          if [[ -z "$node_tmp" ]]; then
-               prln_warning " URI contains non-ASCII characters and IDN conversion failed."
-               outln " Trying to feed the resolver without converted \"$NODE\" ...\n"
-               #ToDo: fileout is missing
-               node_tmp="$NODE"
-          fi
-          NODE="$node_tmp"
-     fi
+     idn_convert "NODE" "$NODE"
+     validate_hostname "$NODE" || fatal "Invalid hostname \"$NODE\" supplied" $ERR_CMDLINE
 
-     debugme echo $NODE:$PORT
      if [[ -n "$XMPP_HOST" ]]; then
-          # XMPP host is set, force SNI to be that
+          # Symmetric to the $NODE validation above
+          idn_convert "XMPP_HOST" "$XMPP_HOST"
+          validate_hostname "$XMPP_HOST" || fatal "Invalid xmpp servername \"$XMPP_HOST\" supplied" $ERR_CMDLINE
+          # if XMPP host is set, force SNI
           SNI="-servername $XMPP_HOST"
      else
           SNI="-servername $NODE"
      fi
+
+     validate_portnumber "$PORT" || fatal "Invalid port specified \"$PORT\"" $ERR_CMDLINE
+
+     debugme echo $NODE:$PORT
+
      URL_PATH=$(sed 's/https:\/\///' <<< "$1" | sed 's/'"${NODE}"'//' | sed 's/.*'"${PORT}"'//')      # remove protocol and node part and port
      URL_PATH=$(sed 's/\/\//\//g' <<< "$URL_PATH")          # we rather want // -> /
      URL_PATH=${URL_PATH%%.}                                # strip trailing "." so that it is not interpreted as URL
@@ -23231,6 +23375,7 @@ get_txt_record() {
 #
 shouldwedo_ipv6() {
      "$do_ipv4_only" && return 0
+     # This could be dangerous if there would be no validation for hostname and port
      bash -c "exec 5<>/dev/tcp/$1/$PORT" &>/dev/null &
      wait_kill $! $((MAX_WAITSOCK * 10))
      if [[ $? -eq 3 ]]; then
@@ -23252,6 +23397,12 @@ shouldwedo_ipv6() {
                fi
           fi
      fi
+     debugme "IPv6_OK: $IPv6_OK"
+     if $IPv6_OK;  then
+          return 0
+     else
+          return 1
+     fi
 }
 
 
@@ -23267,6 +23418,7 @@ determine_ip_addresses() {
 
      ip4=$(get_local_a "$NODE")
      ip6=$(get_local_aaaa "$NODE")
+
 
      if [[ -n "$ip4" ]]; then
           LOCAL_A=true
@@ -23303,9 +23455,11 @@ determine_ip_addresses() {
      elif is_ipv4addr "$NODE"; then
           ip4="$NODE"                        # only a single IPv4 address was supplied as an argument, no hostname
           SNI=""                             # override Server Name Indication as we test the IP only
+          do_ipv4_only=true
      elif is_ipv6addr "$NODE"; then
           ip6="$NODE"
           SNI=""
+          do_ipv6_only=true                  # important for error message if we can't connect
      else
           :                                  # standard case
      fi
@@ -23415,6 +23569,7 @@ check_proxy() {
           fi
           if [[ "$PROXY" == auto ]]; then
                # Get $ENV https_proxy is the one we care about for connects
+               # shellcheck disable=SC2154
                PROXY="${https_proxy#*\/\/}"
                # Fallback:
                [[ -z "$PROXY" ]] && PROXY="${http_proxy#*\/\/}"
@@ -23428,7 +23583,9 @@ check_proxy() {
           # strip square brackets in IPv6 notation, but we may enter them later
           PROXYNODE="${PROXYNODE/\[/}"
           PROXYNODE="${PROXYNODE/\]/}"
-          is_number "$PROXYPORT" || fatal "Proxy port cannot be determined from \"$PROXY\"" $ERR_CMDLINE
+
+          validate_portnumber "$PROXYPORT" || \
+               fatal "Proxy port \"$PROXYPORT\" cannot be determined or is out of range " $ERR_CMDLINE
 
           if is_ipv4addr "$PROXYNODE"; then
                PROXYIP="$PROXYNODE"
@@ -23445,7 +23602,12 @@ check_proxy() {
                     fi
                fi
           else
-               # We check now preferred whether there was an IPv4 proxy via DNS specified
+               # Security gate also for proxy to avoid injection problems
+               idn_convert "PROXYNODE" "$PROXYNODE"
+               validate_hostname "$PROXYNODE" || \
+                    fatal "Invalid proxy servername \"$PROXYNODE\" supplied" $ERR_CMDLINE
+
+               # We check now preferred whether there was an IPv4 proxy via DNS A record specified
                # If it fails it could be an IPv6 only proxy via DNS or we just can't reach the proxy
                PROXYIP="$(get_a_record "$PROXYNODE" 2>/dev/null | grep -v alias | sed 's/^.*address //')"
                if [[ -z "$PROXYIP" ]]; then
@@ -23458,6 +23620,7 @@ check_proxy() {
                fi
                [[ -z "$PROXYIP" ]] && fatal "Proxy IP cannot be determined from \"$PROXYNODE\"" $ERR_CMDLINE
           fi
+
           PROXY="-proxy $PROXYIP:$PROXYPORT"
      fi
 }
@@ -24046,6 +24209,46 @@ check_msg() {
 }
 
 
+# Pre check whether target IP is a QUIC only. It's partly
+# copied from sub_quic() and comes with a less wait time in
+# order not to penalize all hosts which don't support QUIC.
+# It sets QUIC_SUPPORTED and returns these values:
+#    0 QUIC supported
+#    1 is NOT supported
+#    3 check not possible
+#
+quic_precheck() {
+     local use_openssl=""
+
+     # UDP doesn't support STARTTLS or a proxy
+     # Also: UDP is connection less, so a simple bash socket doesn't work for QUIC.
+     # Thus we need to use any OPENSSL for now
+     if [[ -z "$PROXY" ]] || [[ "$PROXY" ]] ; then
+          if "$HAS_QUIC"; then
+               use_openssl=$OPENSSL
+          elif "$HAS2_QUIC"; then
+               use_openssl=$OPENSSL2
+          else
+               QUIC_SUPPORTED=uncertain
+               return 3
+          fi
+          OPENSSL_CONF='' echo | $use_openssl s_client -quic -alpn h3 -connect $NODEIP:$PORT -servername $NODE -no_ign_eof >/dev/null 2>&1 &
+          wait_kill $! $((QUIC_WAIT * 6))
+          if [[ $? -eq 3 ]]; then
+               # killed
+               QUIC_SUPPORTED=no
+               debugme echo $QUIC_SUPPORTED
+               return 1
+          else
+               QUIC_SUPPORTED=yes
+               debugme echo $QUIC_SUPPORTED
+               return 0
+          fi
+     fi
+
+}
+
+
 # arg1 (optional): ftp smtp, lmtp, pop3, imap, sieve, xmpp, xmpp-server, telnet, ldap, postgres, mysql, irc, nntp, sieve (maybe with trailing s)
 #
 determine_service() {
@@ -24053,9 +24256,12 @@ determine_service() {
      local protocol
      local basicauth_header=""
      local reqheader=""
+     local -i init_socket_timeount=40
 
-     # Check if we can connect to $NODEIP:$PORT. Attention: This ALWAYS uses sockets. Thus timeouts for --ssl-=native do not apply
-     if ! fd_socket 5; then
+     # Check first if we TCP connect via socket to $NODEIP:$PORT . Reason: we can't otherwise assure $OPENSSL supports what the server side offers.
+     is_tcp_port_open $NODEIP $PORT $init_socket_timeount
+
+     if [[ $? -ne 0 ]]; then
           if [[ -n "$PROXY" ]]; then
                fatal "You're sure $PROXYNODE:$PROXYPORT allows tunneling here? Can't connect to \"$NODEIP:$PORT\"" $ERR_CONNECT
           else
@@ -24063,11 +24269,17 @@ determine_service() {
                     ip_fatal "Couldn't connect to $NODEIP:$PORT"
                     return 1
                else
-                    fatal "Can't connect to \"$NODEIP:$PORT\"\nMake sure a firewall is not between you and your scanning target!" $ERR_CONNECT
+                    if [[ "$QUIC_SUPPORTED" == yes ]]; then
+                         # quic_precheck was positive, see above
+                         outln
+                         fatal " Scanning hosts which only support HTTP/3 = QUIC (UDP) is not supported yet"
+                    else
+                         outln
+                         fatal "Can't connect to \"$NODEIP:$PORT\"\nMake sure a firewall is not between you and your scanning target!" $ERR_CONNECT
+                    fi
                fi
           fi
      fi
-     close_socket 5
 
      outln
      if [[ -z "$1" ]]; then
@@ -25333,6 +25545,26 @@ check_base_requirements() {
      fi
 }
 
+# Expand additional CA paths once, without splitting filenames on whitespace.
+prepare_additional_ca_files() {
+     local fname
+     local IFS=,
+
+     if [[ -d "$ADDTL_CA_FILES" ]]; then
+          ADDTL_CA_FILES_ARRAY=("$ADDTL_CA_FILES"/*.pem)
+     else
+          # Split only at commas; retain pathname expansion for existing glob users.
+          # shellcheck disable=SC2206
+          ADDTL_CA_FILES_ARRAY=($ADDTL_CA_FILES)
+     fi
+     for fname in "${ADDTL_CA_FILES_ARRAY[@]}"; do
+          [[ -s "$fname" ]] || fatal_cmd_line "The CA file \"$fname\" does not exist" $ERR_RESOURCE
+          grep -q 'BEGIN CERTIFICATE' "$fname" || fatal_cmd_line "\"$fname\" is not CA file in PEM format" $ERR_RESOURCE
+     done
+     return 0
+}
+
+
 parse_cmd_line() {
      local outfile_arg=""
      local cipher_mapping
@@ -25974,16 +26206,7 @@ parse_cmd_line() {
      [[ $CMDLINE_IP == one ]] && ( is_ipv4addr "$URI" || is_ipv6addr "$URI" )  && fatal_cmd_line "\"--ip=one\" plus supplying an IP address doesn't work" $ERR_CMDLINE
      "$do_mx_all_ips" && [[ "$NODNS" == none ]] && fatal_cmd_line "\"--mx\" and \"--nodns=none\" don't work together" $ERR_CMDLINE
 
-     if [[ "${ADDTL_CA_FILES}" =~ \  ]]; then
-          fatal_cmd_line "The CA file \"${ADDTL_CA_FILES}\" must not contain spaces" $ERR_RESOURCE
-     fi
-     if [[ -d "${ADDTL_CA_FILES}" ]]; then
-          ADDTL_CA_FILES="$ADDTL_CA_FILES/*.pem"
-     fi
-     for fname in ${ADDTL_CA_FILES//,/ }; do
-          [[ -s "$fname" ]] || fatal_cmd_line "The CA file \"$fname\" does not exist" $ERR_RESOURCE
-          grep -q 'BEGIN CERTIFICATE' "$fname" || fatal_cmd_line "\"$fname\" is not CA file in PEM format" $ERR_RESOURCE
-     done
+     prepare_additional_ca_files
 
      # Check if mTLS has been selected, and if the correct client auth PEM file has been provided by user
      if [[ -n "$MTLS" ]]; then
@@ -26134,6 +26357,7 @@ lets_roll() {
 
      ((SERVER_COUNTER++))
      datebanner " Start"
+     quic_precheck
      determine_service "$1"        # STARTTLS service? Other will be determined here too. Returns 0 if test connect was ok or has already exited if fatal error occurred
                                    # determine_service() can return 1, it indicates that this IP cannot be reached but there are more IPs to check
      if [[ $? -eq 0 ]] ; then
@@ -26333,7 +26557,7 @@ lets_roll() {
           exit $?
      fi
 
-     [[ -z "$NODE" ]] && parse_hn_port "${URI}"        # NODE, URL_PATH, PORT, IPADDRs2CHECK and IPADDRs2SHOW is set now
+     [[ -z "$NODE" ]] && parse_hn_port "${URI}"        # NODE, URL_PATH, PORT, IPADDRs2CHECK and IPADDRs2SHOW is set now and validated
      prepare_logging "${FNAME_DATE}"
 
      if [[ -n "$PROXY" ]] && $DNS_VIA_PROXY; then
